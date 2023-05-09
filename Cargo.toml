@@ -1,0 +1,17 @@
+[package]
+name = "lp586x"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Markus Kasten <github@markuskasten.eu>"]
+description = "LP586x matrix LED driver (supports LP5860, LP5861, LP5862, LP5864, LP5868)"
+repository = "https://github.com/markus-k/lp586x-rs"
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-hal = "1.0.0-alpha.10"
+
+[dev-dependencies]
+embedded-hal-mock = { git = "https://github.com/dbrgn/embedded-hal-mock.git", branch = "1-alpha" }

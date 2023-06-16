@@ -278,6 +278,31 @@ pub struct Lp586x<DV, I, DM> {
     _phantom_data: core::marker::PhantomData<DV>,
 }
 
+impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
+where
+    D: embedded_hal::i2c::I2c<Error = BusE>,
+{
+    pub fn new_with_i2c(
+        i2c: D,
+        address: u8,
+    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DataModeUnconfigured>, Error<BusE>> {
+        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::I2cInterface::new(i2c, address))
+    }
+}
+
+impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D>
+    Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
+where
+    D: embedded_hal::spi::SpiDevice<Error = BusE>,
+{
+    pub fn new_with_spi_device(
+        spi_device: D,
+    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<BusE>>
+    {
+        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiDeviceInterface::new(spi_device))
+    }
+}
+
 impl<DV: DeviceVariant, I, DM, BusE> Lp586x<DV, I, DM>
 where
     I: RegisterAccess<Error = Error<BusE>>,

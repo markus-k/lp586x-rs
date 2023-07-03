@@ -1,5 +1,3 @@
-use embedded_hal::{i2c, spi};
-
 use crate::Error;
 
 /// Trait for giving read and write access to registers
@@ -28,106 +26,268 @@ pub trait RegisterAccess {
     }
 }
 
-pub struct SpiDeviceInterface<SPID> {
-    pub(crate) spi_device: SPID,
+const fn spi_transmission_header(register: u16, write: bool) -> [u8; 2] {
+    [
+        (register >> 2) as u8,
+        (register << 6) as u8 | if write { 1 << 5 } else { 0 },
+    ]
 }
 
-impl<SPID: spi::SpiDevice> SpiDeviceInterface<SPID> {
-    pub fn new(spi_device: SPID) -> Self {
-        Self { spi_device }
+use embedded_hal::{blocking::spi, digital::v2::OutputPin};
+
+pub struct SpiInterface<SPI, CS> {
+    pub(crate) spi: SPI,
+    pub(crate) cs: CS,
+}
+
+impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> SpiInterface<SPI, CS> {
+    pub fn new(spi: SPI, cs: CS) -> Self {
+        Self { spi, cs }
     }
 
-    pub fn release(self) -> SPID {
-        self.spi_device
-    }
-
-    const fn spi_transmission_header(register: u16, write: bool) -> [u8; 2] {
-        [
-            (register >> 2) as u8,
-            (register << 6) as u8 | if write { 1 << 5 } else { 0 },
-        ]
+    pub fn release(self) -> (SPI, CS) {
+        (self.spi, self.cs)
     }
 }
 
-impl<SPID, BusE> RegisterAccess for SpiDeviceInterface<SPID>
+impl<SPI, CS, BusE> RegisterAccess for SpiInterface<SPI, CS>
 where
-    SPID: spi::SpiDevice<Error = BusE>,
+    SPI: spi::Transfer<u8, Error = BusE> + spi::Write<u8, Error = BusE>,
+    CS: OutputPin<Error = BusE>,
 {
     type Error = Error<BusE>;
 
     fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error> {
-        let header = Self::spi_transmission_header(start_register, false);
+        let header = spi_transmission_header(start_register, false);
 
-        let mut operations = [spi::Operation::Write(&header), spi::Operation::Read(data)];
+        self.cs.set_low().map_err(Error::Bus)?;
 
-        self.spi_device
-            .transaction(&mut operations)
-            .map_err(Error::Bus)?;
+        self.spi.write(&header).map_err(Error::Bus)?;
+
+        self.spi.transfer(data).map_err(Error::Bus)?;
+
+        self.cs.set_high().map_err(Error::Bus)?;
 
         Ok(())
     }
 
     fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
-        let header = Self::spi_transmission_header(start_register, true);
+        let header = spi_transmission_header(start_register, true);
 
-        let mut operations = [spi::Operation::Write(&header), spi::Operation::Write(data)];
+        self.cs.set_low().map_err(Error::Bus)?;
 
-        self.spi_device
-            .transaction(&mut operations)
-            .map_err(Error::Bus)?;
+        self.spi.write(&header).map_err(Error::Bus)?;
+        self.spi.write(data).map_err(Error::Bus)?;
 
-        Ok(())
-    }
-}
-
-pub struct I2cInterface<I2C> {
-    pub(crate) i2c: I2C,
-    pub(crate) address: u8,
-}
-
-impl<I2C: i2c::I2c> I2cInterface<I2C> {
-    pub fn new(i2c: I2C, address: u8) -> Self {
-        Self { i2c, address }
-    }
-
-    pub fn release(self) -> I2C {
-        self.i2c
-    }
-
-    fn address_with_register(&self, register: u16) -> u8 {
-        (self.address & !0b111) | ((register & 0x300) >> 7) as u8
-    }
-}
-
-impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
-where
-    I2C: i2c::I2c<Error = BusE>,
-{
-    type Error = Error<BusE>;
-
-    fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error> {
-        let header = [(start_register & 0xff) as u8];
-        let mut operations = [i2c::Operation::Write(&header), i2c::Operation::Read(data)];
-
-        self.i2c
-            .transaction(self.address_with_register(start_register), &mut operations)
-            .map_err(Error::Bus)?;
-
-        Ok(())
-    }
-
-    fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
-        let header = [(start_register & 0xff) as u8];
-
-        let mut operations = [i2c::Operation::Write(&header), i2c::Operation::Write(data)];
-
-        self.i2c
-            .transaction(self.address_with_register(start_register), &mut operations)
-            .map_err(Error::Bus)?;
+        self.cs.set_high().map_err(Error::Bus)?;
 
         Ok(())
     }
 }
+
+#[cfg(feature = "eh1_0")]
+mod for_eh1_0 {
+    use super::*;
+    use eh1_0::{i2c, spi};
+
+    pub struct SpiDeviceInterface<SPID> {
+        pub(crate) spi_device: SPID,
+    }
+
+    impl<SPID: spi::SpiDevice> SpiDeviceInterface<SPID> {
+        pub fn new(spi_device: SPID) -> Self {
+            Self { spi_device }
+        }
+
+        pub fn release(self) -> SPID {
+            self.spi_device
+        }
+    }
+
+    impl<SPID, BusE> RegisterAccess for SpiDeviceInterface<SPID>
+    where
+        SPID: spi::SpiDevice<Error = BusE>,
+    {
+        type Error = Error<BusE>;
+
+        fn read_registers(
+            &mut self,
+            start_register: u16,
+            data: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            let header = spi_transmission_header(start_register, false);
+
+            let mut operations = [spi::Operation::Write(&header), spi::Operation::Read(data)];
+
+            self.spi_device
+                .transaction(&mut operations)
+                .map_err(Error::Bus)?;
+
+            Ok(())
+        }
+
+        fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
+            let header = spi_transmission_header(start_register, true);
+
+            let mut operations = [spi::Operation::Write(&header), spi::Operation::Write(data)];
+
+            self.spi_device
+                .transaction(&mut operations)
+                .map_err(Error::Bus)?;
+
+            Ok(())
+        }
+    }
+
+    pub struct I2cInterface<I2C> {
+        pub(crate) i2c: I2C,
+        pub(crate) address: u8,
+    }
+
+    #[cfg(feature = "eh1_0")]
+    impl<I2C: i2c::I2c> I2cInterface<I2C> {
+        pub fn new(i2c: I2C, address: u8) -> Self {
+            Self { i2c, address }
+        }
+
+        pub fn release(self) -> I2C {
+            self.i2c
+        }
+
+        fn address_with_register(&self, register: u16) -> u8 {
+            (self.address & !0b111) | ((register & 0x300) >> 7) as u8
+        }
+    }
+
+    #[cfg(feature = "eh1_0")]
+    impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
+    where
+        I2C: i2c::I2c<Error = BusE>,
+    {
+        type Error = Error<BusE>;
+
+        fn read_registers(
+            &mut self,
+            start_register: u16,
+            data: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            let header = [(start_register & 0xff) as u8];
+            let mut operations = [i2c::Operation::Write(&header), i2c::Operation::Read(data)];
+
+            self.i2c
+                .transaction(self.address_with_register(start_register), &mut operations)
+                .map_err(Error::Bus)?;
+
+            Ok(())
+        }
+
+        fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
+            let header = [(start_register & 0xff) as u8];
+
+            let mut operations = [i2c::Operation::Write(&header), i2c::Operation::Write(data)];
+
+            self.i2c
+                .transaction(self.address_with_register(start_register), &mut operations)
+                .map_err(Error::Bus)?;
+
+            Ok(())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use embedded_hal_mock::{
+            i2c::{Mock as I2cMock, Transaction as I2cTransaction},
+            spi::{Mock as SpiMock, Transaction as SpiTransaction},
+        };
+
+        #[test]
+        fn test_spi_read_register() {
+            // test writing to register 0x38b
+            const REGISTER: u16 = 0x38b;
+            const VALUE: u8 = 0xAB;
+
+            let spi = SpiMock::new(&[
+                SpiTransaction::transaction_start(),
+                SpiTransaction::write_vec(vec![0xe2, 0xc0]),
+                SpiTransaction::read(VALUE),
+                SpiTransaction::transaction_end(),
+            ]);
+
+            let mut spi_if = SpiDeviceInterface::new(spi);
+
+            let value = spi_if.read_register(REGISTER).unwrap();
+
+            assert_eq!(value, VALUE);
+
+            spi_if.release().done();
+        }
+
+        #[test]
+        fn test_spi_write_register() {
+            // test writing to register 0x38b
+            const REGISTER: u16 = 0x38b;
+            const VALUE: u8 = 0xAB;
+
+            let spi = SpiMock::new(&[
+                SpiTransaction::transaction_start(),
+                SpiTransaction::write_vec(vec![0xe2, 0xe0]),
+                SpiTransaction::write(VALUE),
+                SpiTransaction::transaction_end(),
+            ]);
+
+            let mut spi_if = SpiDeviceInterface::new(spi);
+
+            spi_if.write_register(REGISTER, VALUE).unwrap();
+
+            spi_if.release().done();
+        }
+
+        #[test]
+        fn test_i2c_read_register() {
+            // test writing to register 0x38b
+            const REGISTER: u16 = 0x38b;
+            const VALUE: u8 = 0xAB;
+
+            let i2c = I2cMock::new(&[
+                I2cTransaction::transaction_start(0),
+                I2cTransaction::write(0, vec![0x8b]),
+                I2cTransaction::read(0, vec![VALUE]),
+                I2cTransaction::transaction_end(0),
+            ]);
+
+            let mut i2c_if = I2cInterface::new(i2c, 0);
+
+            let value = i2c_if.read_register(REGISTER).unwrap();
+            assert_eq!(value, VALUE);
+
+            i2c_if.release().done();
+        }
+
+        #[test]
+        fn test_i2c_write_register() {
+            // test writing to register 0x38b
+            const REGISTER: u16 = 0x38b;
+            const VALUE: u8 = 0xAB;
+
+            let i2c = I2cMock::new(&[
+                I2cTransaction::transaction_start(0),
+                I2cTransaction::write(0, vec![0x8b, VALUE]),
+                I2cTransaction::transaction_end(0),
+            ]);
+
+            let mut i2c_if = I2cInterface::new(i2c, 0);
+
+            i2c_if.write_register(REGISTER, VALUE).unwrap();
+
+            i2c_if.release().done();
+        }
+    }
+}
+
+#[cfg(feature = "eh1_0")]
+pub use for_eh1_0::{I2cInterface, SpiDeviceInterface};
 
 #[cfg(test)]
 pub(crate) mod mock {
@@ -225,96 +385,5 @@ pub(crate) mod mock {
 
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use embedded_hal_mock::{
-        i2c::{Mock as I2cMock, Transaction as I2cTransaction},
-        spi::{Mock as SpiMock, Transaction as SpiTransaction},
-    };
-
-    #[test]
-    fn test_spi_read_register() {
-        // test writing to register 0x38b
-        const REGISTER: u16 = 0x38b;
-        const VALUE: u8 = 0xAB;
-
-        let spi = SpiMock::new(&[
-            SpiTransaction::transaction_start(),
-            SpiTransaction::write_vec(vec![0xe2, 0xc0]),
-            SpiTransaction::read(VALUE),
-            SpiTransaction::transaction_end(),
-        ]);
-
-        let mut spi_if = SpiDeviceInterface::new(spi);
-
-        let value = spi_if.read_register(REGISTER).unwrap();
-
-        assert_eq!(value, VALUE);
-
-        spi_if.release().done();
-    }
-
-    #[test]
-    fn test_spi_write_register() {
-        // test writing to register 0x38b
-        const REGISTER: u16 = 0x38b;
-        const VALUE: u8 = 0xAB;
-
-        let spi = SpiMock::new(&[
-            SpiTransaction::transaction_start(),
-            SpiTransaction::write_vec(vec![0xe2, 0xe0]),
-            SpiTransaction::write(VALUE),
-            SpiTransaction::transaction_end(),
-        ]);
-
-        let mut spi_if = SpiDeviceInterface::new(spi);
-
-        spi_if.write_register(REGISTER, VALUE).unwrap();
-
-        spi_if.release().done();
-    }
-
-    #[test]
-    fn test_i2c_read_register() {
-        // test writing to register 0x38b
-        const REGISTER: u16 = 0x38b;
-        const VALUE: u8 = 0xAB;
-
-        let i2c = I2cMock::new(&[
-            I2cTransaction::transaction_start(0),
-            I2cTransaction::write(0, vec![0x8b]),
-            I2cTransaction::read(0, vec![VALUE]),
-            I2cTransaction::transaction_end(0),
-        ]);
-
-        let mut i2c_if = I2cInterface::new(i2c, 0);
-
-        let value = i2c_if.read_register(REGISTER).unwrap();
-        assert_eq!(value, VALUE);
-
-        i2c_if.release().done();
-    }
-
-    #[test]
-    fn test_i2c_write_register() {
-        // test writing to register 0x38b
-        const REGISTER: u16 = 0x38b;
-        const VALUE: u8 = 0xAB;
-
-        let i2c = I2cMock::new(&[
-            I2cTransaction::transaction_start(0),
-            I2cTransaction::write(0, vec![0x8b, VALUE]),
-            I2cTransaction::transaction_end(0),
-        ]);
-
-        let mut i2c_if = I2cInterface::new(i2c, 0);
-
-        i2c_if.write_register(REGISTER, VALUE).unwrap();
-
-        i2c_if.release().done();
     }
 }

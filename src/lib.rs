@@ -278,9 +278,10 @@ pub struct Lp586x<DV, I, DM> {
     _phantom_data: core::marker::PhantomData<DV>,
 }
 
+#[cfg(feature = "eh1_0")]
 impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
 where
-    D: embedded_hal::i2c::I2c<Error = BusE>,
+    D: eh1_0::i2c::I2c<Error = BusE>,
 {
     pub fn new_with_i2c(
         i2c: D,
@@ -290,16 +291,38 @@ where
     }
 }
 
+#[cfg(feature = "eh1_0")]
 impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D>
     Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
 where
-    D: embedded_hal::spi::SpiDevice<Error = BusE>,
+    D: eh1_0::spi::SpiDevice<Error = BusE>,
 {
     pub fn new_with_spi_device(
         spi_device: D,
     ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<BusE>>
     {
         Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiDeviceInterface::new(spi_device))
+    }
+}
+
+#[cfg(not(feature = "eh1_0"))]
+mod for_eh02 {
+    use super::*;
+
+    impl<DV: DeviceVariant, DM: DataModeMarker, BusE, SPI, CS>
+        Lp586x<DV, interface::SpiInterface<SPI, CS>, DM>
+    where
+        SPI: embedded_hal::blocking::spi::Transfer<u8, Error = BusE>
+            + embedded_hal::blocking::spi::Write<u8, Error = BusE>,
+        CS: embedded_hal::digital::v2::OutputPin<Error = BusE>,
+    {
+        pub fn new_with_spi_cs(
+            spi: SPI,
+            cs: CS,
+        ) -> Result<Lp586x<DV, interface::SpiInterface<SPI, CS>, DataModeUnconfigured>, Error<BusE>>
+        {
+            Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiInterface::new(spi, cs))
+        }
     }
 }
 
@@ -454,7 +477,7 @@ where
 }
 
 /// Trait for accessing PWM data in the correct data format.
-trait PwmAccess<T> {
+pub trait PwmAccess<T> {
     type Error;
 
     /// Set PWM values of `values.len()` dots, starting from dot `start`.
@@ -493,16 +516,16 @@ impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, Data
     }
 }
 
-impl<DV, SPID: embedded_hal::spi::SpiDevice, DM>
-    Lp586x<DV, interface::SpiDeviceInterface<SPID>, DM>
-{
+#[cfg(feature = "eh1_0")]
+impl<DV, SPID: eh1_0::spi::SpiDevice, DM> Lp586x<DV, interface::SpiDeviceInterface<SPID>, DM> {
     /// Destroys the driver and releases the owned [`SpiDevice`].
     pub fn release(self) -> SPID {
         self.interface.release()
     }
 }
 
-impl<DV, I2C: embedded_hal::i2c::I2c, DM> Lp586x<DV, interface::I2cInterface<I2C>, DM> {
+#[cfg(feature = "eh1_0")]
+impl<DV, I2C: eh1_0::i2c::I2c, DM> Lp586x<DV, interface::I2cInterface<I2C>, DM> {
     /// Destorys the driver and releases the owned [`I2c`].
     pub fn release(self) -> I2C {
         self.interface.release()

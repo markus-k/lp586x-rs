@@ -376,61 +376,15 @@ where
     }
 
     pub fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<BusE>> {
-        let dev_initial = match configuration.pwm_frequency {
-            PwmFrequency::Pwm62_5kHz => 0,
-            PwmFrequency::Pwm125kHz => BitFlags::DEV_INITIAL_PWM_FREQ,
-        } | configuration.data_ref_mode.register_value()
-            << BitFlags::DEV_INITIAL_DATA_REF_MODE_SHIFT
-            | (configuration.max_line_num & BitFlags::DEV_INITIAL_MAX_LINE_NUM_MASK)
-                << BitFlags::DEV_INITIAL_MAX_LINE_NUM_SHIFT;
-
-        let dev_config1 = configuration
-            .cs_turn_on_delay
-            .then_some(BitFlags::DEV_CONFIG1_CS_ON_SHIFT)
-            .unwrap_or(0)
-            | configuration
-                .pwm_phase_shift
-                .then_some(BitFlags::DEV_CONFIG1_PWM_PHASE_SHIFT)
-                .unwrap_or(0)
-            | match configuration.pwm_scale_mode {
-                PwmScaleMode::Linear => 0,
-                PwmScaleMode::Exponential => BitFlags::DEV_CONFIG1_PWM_SCALE_MODE,
-            }
-            | match configuration.switch_blanking_time {
-                LineBlankingTime::Blank1us => 0,
-                LineBlankingTime::Blank0_5us => BitFlags::DEV_CONFIG1_SW_BLK,
-            };
-
-        let dev_config2 = configuration
-            .lsd_removal
-            .then_some(BitFlags::DEV_CONFIG2_LSD_REMOVAL)
-            .unwrap_or(0)
-            | configuration
-                .lod_removal
-                .then_some(BitFlags::DEV_CONFIG2_LOD_REMOVAL)
-                .unwrap_or(0)
-            | configuration.comp_group1.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP1_SHIFT
-            | configuration.comp_group2.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP2_SHIFT
-            | configuration.comp_group3.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP3_SHIFT;
-
-        let dev_config3 = configuration
-            .up_deghost_enable
-            .then_some(BitFlags::DEV_CONFIG3_UP_DEGHOST_ENABLE)
-            .unwrap_or(0)
-            | configuration.maximum_current.register_value()
-                << BitFlags::DEV_CONFIG3_MAXIMUM_CURRENT_SHIFT
-            | configuration.up_deghost.register_value() << BitFlags::DEV_CONFIG3_UP_DEGHOST_SHIFT
-            | configuration.down_deghost.register_value()
-                << BitFlags::DEV_CONFIG3_DOWN_DEGHOST_SHIFT;
-
-        self.interface
-            .write_register(Register::DEV_INITIAL, dev_initial)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG1, dev_config1)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG2, dev_config2)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG3, dev_config3)?;
+        self.interface.write_registers(
+            Register::DEV_INITIAL,
+            &[
+                configuration.dev_initial_reg_value(),
+                configuration.dev_config1_reg_value(),
+                configuration.dev_config2_reg_value(),
+                configuration.dev_config3_reg_value(),
+            ],
+        )?;
 
         Ok(())
     }

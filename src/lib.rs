@@ -517,6 +517,27 @@ pub trait PwmAccess<T> {
     fn get_pwm(&mut self, dot: u16) -> Result<T, Self::Error>;
 }
 
+impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u8> for Lp586x<DV, I, DataMode8Bit> {
+    type Error = I::Error;
+
+    fn set_pwm(&mut self, start_dot: u16, values: &[u8]) -> Result<(), Self::Error> {
+        if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
+            // TODO: probably we don't want to panic in an embedded system...
+            panic!("Too many values supplied for given start and device variant.");
+        }
+
+        self.interface
+            .write_registers(Register::PWM_BRIGHTNESS_START + start_dot, values)?;
+
+        Ok(())
+    }
+
+    fn get_pwm(&mut self, dot: u16) -> Result<u8, Self::Error> {
+        self.interface
+            .read_register(Register::PWM_BRIGHTNESS_START + dot)
+    }
+}
+
 impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit> {
     type Error = I::Error;
 

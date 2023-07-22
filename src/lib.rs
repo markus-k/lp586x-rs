@@ -428,6 +428,8 @@ where
     }
 
     /// Sets the brightness across all LEDs in the given [`Group`].
+    /// Note that individual LEDS/dots need to be assigned to a `LED_DOT_GROUP`
+    /// for this setting to have effect. By default dots ar not assigned to any group.
     pub fn set_group_brightness(
         &mut self,
         group: Group,
@@ -442,7 +444,7 @@ where
     /// Set group current scaling (0..127).
     pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<BusE>> {
         self.interface
-            .write_register(group.current_reg_addr(), current)?;
+            .write_register(group.current_reg_addr(), current.min(0x7f))?;
 
         Ok(())
     }

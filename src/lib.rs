@@ -156,6 +156,24 @@ pub enum Group {
     Group2,
 }
 
+impl Group {
+    pub fn brightness_reg_addr(&self) -> u16 {
+        match self {
+            Group::Group0 => Register::GROUP0_BRIGHTNESS,
+            Group::Group1 => Register::GROUP1_BRIGHTNESS,
+            Group::Group2 => Register::GROUP2_BRIGHTNESS,
+        }
+    }
+
+    pub fn current_reg_addr(&self) -> u16 {
+        match self {
+            Group::Group0 => Register::GROUP0_CURRENT,
+            Group::Group1 => Register::GROUP1_CURRENT,
+            Group::Group2 => Register::GROUP2_CURRENT,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalFaultState {
     led_open_detected: bool,
@@ -163,6 +181,13 @@ pub struct GlobalFaultState {
 }
 
 impl GlobalFaultState {
+    pub fn from_reg_value(fault_state_value: u8) -> Self {
+        GlobalFaultState {
+            led_open_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LOD > 0,
+            led_short_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LSD > 0,
+        }
+    }
+
     /// True, if any LED is detected open.
     ///
     /// LED open detection is only performed when PWM ≥ 25 (Mode 1 and Mode 2) or
@@ -408,26 +433,16 @@ where
         group: Group,
         brightness: u8,
     ) -> Result<(), Error<BusE>> {
-        let register = match group {
-            Group::Group0 => Register::GROUP0_BRIGHTNESS,
-            Group::Group1 => Register::GROUP1_BRIGHTNESS,
-            Group::Group2 => Register::GROUP2_BRIGHTNESS,
-        };
-
-        self.interface.write_register(register, brightness)?;
+        self.interface
+            .write_register(group.brightness_reg_addr(), brightness)?;
 
         Ok(())
     }
 
     /// Set group current scaling (0..127).
     pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<BusE>> {
-        let register = match group {
-            Group::Group0 => Register::GROUP0_CURRENT,
-            Group::Group1 => Register::GROUP1_CURRENT,
-            Group::Group2 => Register::GROUP2_CURRENT,
-        };
-
-        self.interface.write_register(register, current)?;
+        self.interface
+            .write_register(group.current_reg_addr(), current)?;
 
         Ok(())
     }
@@ -435,12 +450,8 @@ where
     /// Get global fault state, indicating if any LEDs in the matrix have a
     /// open or short failure.
     pub fn get_global_fault_state(&mut self) -> Result<GlobalFaultState, Error<BusE>> {
-        let fault_register = self.interface.read_register(Register::FAULT_STATE)?;
-
-        Ok(GlobalFaultState {
-            led_open_detected: fault_register & BitFlags::FAULT_STATE_GLOBAL_LOD > 0,
-            led_short_detected: fault_register & BitFlags::FAULT_STATE_GLOBAL_LSD > 0,
-        })
+        let fault_state_value = self.interface.read_register(Register::FAULT_STATE)?;
+        Ok(GlobalFaultState::from_reg_value(fault_state_value))
     }
 
     pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<BusE>> {

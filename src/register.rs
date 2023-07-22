@@ -5,14 +5,17 @@ pub struct Register;
 #[allow(dead_code)]
 impl Register {
     pub const CHIP_EN: u16 = 0x000;
+
     pub const DEV_INITIAL: u16 = 0x001;
     pub const DEV_CONFIG1: u16 = 0x002;
     pub const DEV_CONFIG2: u16 = 0x003;
     pub const DEV_CONFIG3: u16 = 0x004;
+
     pub const GLOBAL_BRIGHTNESS: u16 = 0x005;
     pub const GROUP0_BRIGHTNESS: u16 = 0x006;
     pub const GROUP1_BRIGHTNESS: u16 = 0x007;
     pub const GROUP2_BRIGHTNESS: u16 = 0x008;
+
     pub const GROUP0_CURRENT: u16 = 0x009;
     pub const GROUP1_CURRENT: u16 = 0x00A;
     pub const GROUP2_CURRENT: u16 = 0x00B;
@@ -22,7 +25,7 @@ impl Register {
         Self::DOT_GROUP_SELECT_START + group
     }
 
-    pub const DOT_ONOFF_START: u16 = 0x044;
+    pub const DOT_ONOFF_START: u16 = 0x043;
     pub const fn dot_onoff(dot: u16) -> u16 {
         Self::DOT_ONOFF_START + dot
     }

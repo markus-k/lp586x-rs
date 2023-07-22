@@ -20,6 +20,9 @@ use register::{BitFlags, Register};
 pub enum Error<BusE> {
     /// A bus related error has occured
     Bus(BusE),
+
+    /// Temporary buffer too small
+    BufferOverrun,
 }
 
 /// Output PWM frequency setting
@@ -354,6 +357,14 @@ where
         Ok(driver)
     }
 
+    pub fn num_lines(&self) -> u8 {
+        DV::NUM_LINES
+    }
+
+    pub fn num_dots(&self) -> u16 {
+        DV::NUM_DOTS
+    }
+
     /// Enable or disable the chip.
     ///
     /// After enabling the chip, wait t_chip_en (100µs) for the chip to enter normal mode.
@@ -490,29 +501,31 @@ pub trait PwmAccess<T> {
 impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit> {
     type Error = I::Error;
 
-    fn set_pwm(&mut self, start: u16, values: &[u16]) -> Result<(), Self::Error> {
-        let mut registers = [0; 396];
+    fn set_pwm(&mut self, start_dot: u16, values: &[u16]) -> Result<(), Self::Error> {
+        let mut buffer = [0; Variant0::NUM_DOTS as usize * 2];
 
-        if values.len() + start as usize > (DV::NUM_DOTS as usize) {
+        if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
+            // TODO: probably we don't want to panic in an embedded system...
             panic!("Too many values supplied for given start and device variant.");
         }
 
-        for (i, value) in values.iter().enumerate() {
-            let [lower, upper] = value.to_le_bytes();
-            registers[start as usize + i] = lower;
-            registers[start as usize + i + 1] = upper;
-        }
+        // map u16 values to a u8 buffer (little endian)
+        values.iter().enumerate().for_each(|(idx, value)| {
+            let register_offset = idx * 2;
+            [buffer[register_offset], buffer[register_offset + 1]] = value.to_le_bytes();
+        });
 
         self.interface.write_registers(
-            Register::PWM_BRIGHTNESS_START + start * 2,
-            &registers[..values.len() * 2],
+            Register::PWM_BRIGHTNESS_START + start_dot * 2,
+            &buffer[..values.len() * 2],
         )?;
 
         Ok(())
     }
 
-    fn get_pwm(&mut self, _dot: u16) -> Result<u16, Self::Error> {
-        todo!()
+    fn get_pwm(&mut self, dot: u16) -> Result<u16, Self::Error> {
+        self.interface
+            .read_register_wide(Register::PWM_BRIGHTNESS_START + (dot * 2))
     }
 }
 

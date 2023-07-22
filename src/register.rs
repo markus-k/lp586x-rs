@@ -53,7 +53,7 @@ impl Register {
     //  - L0-CS0, L0-CS1, .., L1-CS0, ...
     // 16 bit:
     //  - [7:0] L0-CS0, [15:8] L0-CS0, [7:0] L0-CS1, [15:8] L0-CS1, ...
-    pub const PWM_BRIGHTNESS_START: u16 = 0x20;
+    pub const PWM_BRIGHTNESS_START: u16 = 0x200;
     pub const fn pwm_brightness(dot: u16) -> u16 {
         Self::PWM_BRIGHTNESS_START + dot
     }

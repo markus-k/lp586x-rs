@@ -8,6 +8,10 @@ pub trait RegisterAccess {
     /// the register for every elements.
     fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error>;
 
+    /// Writes to multiple registers, starting from `start_register` and incrementing
+    /// the register by one for every element in `data`.
+    fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error>;
+
     /// Reads a single value from `register`.
     fn read_register(&mut self, register: u16) -> Result<u8, Self::Error> {
         let mut buffer: [u8; 1] = [0; 1];
@@ -16,13 +20,19 @@ pub trait RegisterAccess {
         Ok(buffer[0])
     }
 
-    /// Writes to multiple registers, starting from `start_register` and incrementing
-    /// the register by one for every element in `data`.
-    fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error>;
+    fn read_register_wide(&mut self, register: u16) -> Result<u16, Self::Error> {
+        let mut bytes = [0; 2];
+        self.read_registers(register, &mut bytes)?;
+        Ok(u16::from_le_bytes(bytes))
+    }
 
     /// Writes a single value to `register`.
-    fn write_register(&mut self, register: u16, data: u8) -> Result<(), Self::Error> {
-        self.write_registers(register, &[data])
+    fn write_register(&mut self, register: u16, value: u8) -> Result<(), Self::Error> {
+        self.write_registers(register, &[value])
+    }
+
+    fn write_register_wide(&mut self, register: u16, value: u16) -> Result<(), Self::Error> {
+        self.write_registers(register, &value.to_le_bytes())
     }
 }
 
@@ -85,6 +95,68 @@ where
     }
 }
 
+pub struct I2cInterface<I2C> {
+    pub(crate) i2c: I2C,
+    pub(crate) address: u8,
+}
+
+impl<I2C> I2cInterface<I2C> {
+    pub fn new(i2c: I2C, address: u8) -> Self {
+        Self { i2c, address }
+    }
+
+    fn address_with_register(&self, register: u16) -> u8 {
+        // The `address` is the 7bit i2c address (so excluding the R/W bit), not 8 bit (incl R/W)
+        (self.address & !0b11) | ((register & 0x300) >> 8) as u8
+    }
+}
+
+use embedded_hal::blocking::i2c;
+
+impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
+where
+    I2C: i2c::Write<Error = BusE> + i2c::WriteRead<Error = BusE>,
+{
+    type Error = Error<BusE>;
+
+    fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error> {
+        self.i2c
+            .write_read(
+                self.address_with_register(start_register),
+                &[start_register as u8],
+                data,
+            )
+            .map_err(Error::Bus)
+    }
+
+    fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
+        /// Should be enough for any LP586x device variant, as we only have a 10bit register address space in the LP586x
+        /// Possibly we can set this buffer size appropriately, based on the LP586x variant somehow... for now we
+        /// just allocate this buffe 'large enough' for all cases
+        const MAX_DATA_SIZE: usize = 0x400;
+
+        let data_len = data.len();
+        if data_len > MAX_DATA_SIZE {
+            Err(Error::BufferOverrun)?
+        }
+
+        // create buffer to hold our "wide" address header and data in, for 'legacy/basic' I2C-hal support (meh..)
+        // This is wasteful, but needded (?) to support the 'legacy' i2c `Write` trait (for HALs not implementing the
+        // `WriteIter` and/or `Transactional` i2c traits e.g. the nrf-hal)
+        let mut buffer = [start_register as u8; MAX_DATA_SIZE + 1];
+        let data_slice = &mut buffer[1..data_len + 1];
+
+        assert!(data_slice.len() == data.len());
+        data_slice.copy_from_slice(data);
+
+        let composite_bytes = &buffer[..data_len + 1];
+
+        self.i2c
+            .write(self.address_with_register(start_register), composite_bytes)
+            .map_err(Error::Bus)
+    }
+}
+
 #[cfg(feature = "eh1_0")]
 mod for_eh1_0 {
     use super::*;
@@ -139,27 +211,12 @@ mod for_eh1_0 {
         }
     }
 
-    pub struct I2cInterface<I2C> {
-        pub(crate) i2c: I2C,
-        pub(crate) address: u8,
-    }
-
-    #[cfg(feature = "eh1_0")]
     impl<I2C: i2c::I2c> I2cInterface<I2C> {
-        pub fn new(i2c: I2C, address: u8) -> Self {
-            Self { i2c, address }
-        }
-
         pub fn release(self) -> I2C {
             self.i2c
         }
-
-        fn address_with_register(&self, register: u16) -> u8 {
-            (self.address & !0b111) | ((register & 0x300) >> 7) as u8
-        }
     }
 
-    #[cfg(feature = "eh1_0")]
     impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
     where
         I2C: i2c::I2c<Error = BusE>,

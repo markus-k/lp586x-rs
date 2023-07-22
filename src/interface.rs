@@ -111,8 +111,10 @@ impl<I2C> I2cInterface<I2C> {
     }
 }
 
+#[cfg(not(feature = "eh1_0"))]
 use embedded_hal::blocking::i2c;
 
+#[cfg(not(feature = "eh1_0"))]
 impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
 where
     I2C: i2c::Write<Error = BusE> + i2c::WriteRead<Error = BusE>,
@@ -254,7 +256,7 @@ mod for_eh1_0 {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use embedded_hal_mock::{
+        use eh1_0_mock::{
             i2c::{Mock as I2cMock, Transaction as I2cTransaction},
             spi::{Mock as SpiMock, Transaction as SpiTransaction},
         };
@@ -344,7 +346,7 @@ mod for_eh1_0 {
 }
 
 #[cfg(feature = "eh1_0")]
-pub use for_eh1_0::{I2cInterface, SpiDeviceInterface};
+pub use for_eh1_0::SpiDeviceInterface;
 
 #[cfg(test)]
 pub(crate) mod mock {

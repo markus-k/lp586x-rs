@@ -20,6 +20,9 @@ use register::{BitFlags, Register};
 pub enum Error<BusE> {
     /// A bus related error has occured
     Bus(BusE),
+
+    /// Temporary buffer too small
+    BufferOverrun,
 }
 
 /// Output PWM frequency setting
@@ -153,6 +156,24 @@ pub enum Group {
     Group2,
 }
 
+impl Group {
+    pub fn brightness_reg_addr(&self) -> u16 {
+        match self {
+            Group::Group0 => Register::GROUP0_BRIGHTNESS,
+            Group::Group1 => Register::GROUP1_BRIGHTNESS,
+            Group::Group2 => Register::GROUP2_BRIGHTNESS,
+        }
+    }
+
+    pub fn current_reg_addr(&self) -> u16 {
+        match self {
+            Group::Group0 => Register::GROUP0_CURRENT,
+            Group::Group1 => Register::GROUP1_CURRENT,
+            Group::Group2 => Register::GROUP2_CURRENT,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalFaultState {
     led_open_detected: bool,
@@ -160,6 +181,13 @@ pub struct GlobalFaultState {
 }
 
 impl GlobalFaultState {
+    pub fn from_reg_value(fault_state_value: u8) -> Self {
+        GlobalFaultState {
+            led_open_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LOD > 0,
+            led_short_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LSD > 0,
+        }
+    }
+
     /// True, if any LED is detected open.
     ///
     /// LED open detection is only performed when PWM ≥ 25 (Mode 1 and Mode 2) or
@@ -354,6 +382,14 @@ where
         Ok(driver)
     }
 
+    pub fn num_lines(&self) -> u8 {
+        DV::NUM_LINES
+    }
+
+    pub fn num_dots(&self) -> u16 {
+        DV::NUM_DOTS
+    }
+
     /// Enable or disable the chip.
     ///
     /// After enabling the chip, wait t_chip_en (100µs) for the chip to enter normal mode.
@@ -365,61 +401,15 @@ where
     }
 
     pub fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<BusE>> {
-        let dev_initial = match configuration.pwm_frequency {
-            PwmFrequency::Pwm62_5kHz => 0,
-            PwmFrequency::Pwm125kHz => BitFlags::DEV_INITIAL_PWM_FREQ,
-        } | configuration.data_ref_mode.register_value()
-            << BitFlags::DEV_INITIAL_DATA_REF_MODE_SHIFT
-            | (configuration.max_line_num & BitFlags::DEV_INITIAL_MAX_LINE_NUM_MASK)
-                << BitFlags::DEV_INITIAL_MAX_LINE_NUM_SHIFT;
-
-        let dev_config1 = configuration
-            .cs_turn_on_delay
-            .then_some(BitFlags::DEV_CONFIG1_CS_ON_SHIFT)
-            .unwrap_or(0)
-            | configuration
-                .pwm_phase_shift
-                .then_some(BitFlags::DEV_CONFIG1_PWM_PHASE_SHIFT)
-                .unwrap_or(0)
-            | match configuration.pwm_scale_mode {
-                PwmScaleMode::Linear => 0,
-                PwmScaleMode::Exponential => BitFlags::DEV_CONFIG1_PWM_SCALE_MODE,
-            }
-            | match configuration.switch_blanking_time {
-                LineBlankingTime::Blank1us => 0,
-                LineBlankingTime::Blank0_5us => BitFlags::DEV_CONFIG1_SW_BLK,
-            };
-
-        let dev_config2 = configuration
-            .lsd_removal
-            .then_some(BitFlags::DEV_CONFIG2_LSD_REMOVAL)
-            .unwrap_or(0)
-            | configuration
-                .lod_removal
-                .then_some(BitFlags::DEV_CONFIG2_LOD_REMOVAL)
-                .unwrap_or(0)
-            | configuration.comp_group1.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP1_SHIFT
-            | configuration.comp_group2.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP2_SHIFT
-            | configuration.comp_group3.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP3_SHIFT;
-
-        let dev_config3 = configuration
-            .up_deghost_enable
-            .then_some(BitFlags::DEV_CONFIG3_UP_DEGHOST_ENABLE)
-            .unwrap_or(0)
-            | configuration.maximum_current.register_value()
-                << BitFlags::DEV_CONFIG3_MAXIMUM_CURRENT_SHIFT
-            | configuration.up_deghost.register_value() << BitFlags::DEV_CONFIG3_UP_DEGHOST_SHIFT
-            | configuration.down_deghost.register_value()
-                << BitFlags::DEV_CONFIG3_DOWN_DEGHOST_SHIFT;
-
-        self.interface
-            .write_register(Register::DEV_INITIAL, dev_initial)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG1, dev_config1)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG2, dev_config2)?;
-        self.interface
-            .write_register(Register::DEV_CONFIG3, dev_config3)?;
+        self.interface.write_registers(
+            Register::DEV_INITIAL,
+            &[
+                configuration.dev_initial_reg_value(),
+                configuration.dev_config1_reg_value(),
+                configuration.dev_config2_reg_value(),
+                configuration.dev_config3_reg_value(),
+            ],
+        )?;
 
         Ok(())
     }
@@ -438,31 +428,23 @@ where
     }
 
     /// Sets the brightness across all LEDs in the given [`Group`].
+    /// Note that individual LEDS/dots need to be assigned to a `LED_DOT_GROUP`
+    /// for this setting to have effect. By default dots ar not assigned to any group.
     pub fn set_group_brightness(
         &mut self,
         group: Group,
         brightness: u8,
     ) -> Result<(), Error<BusE>> {
-        let register = match group {
-            Group::Group0 => Register::GROUP0_BRIGHTNESS,
-            Group::Group1 => Register::GROUP1_BRIGHTNESS,
-            Group::Group2 => Register::GROUP2_BRIGHTNESS,
-        };
-
-        self.interface.write_register(register, brightness)?;
+        self.interface
+            .write_register(group.brightness_reg_addr(), brightness)?;
 
         Ok(())
     }
 
     /// Set group current scaling (0..127).
     pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<BusE>> {
-        let register = match group {
-            Group::Group0 => Register::GROUP0_CURRENT,
-            Group::Group1 => Register::GROUP1_CURRENT,
-            Group::Group2 => Register::GROUP2_CURRENT,
-        };
-
-        self.interface.write_register(register, current)?;
+        self.interface
+            .write_register(group.current_reg_addr(), current.min(0x7f))?;
 
         Ok(())
     }
@@ -470,12 +452,8 @@ where
     /// Get global fault state, indicating if any LEDs in the matrix have a
     /// open or short failure.
     pub fn get_global_fault_state(&mut self) -> Result<GlobalFaultState, Error<BusE>> {
-        let fault_register = self.interface.read_register(Register::FAULT_STATE)?;
-
-        Ok(GlobalFaultState {
-            led_open_detected: fault_register & BitFlags::FAULT_STATE_GLOBAL_LOD > 0,
-            led_short_detected: fault_register & BitFlags::FAULT_STATE_GLOBAL_LSD > 0,
-        })
+        let fault_state_value = self.interface.read_register(Register::FAULT_STATE)?;
+        Ok(GlobalFaultState::from_reg_value(fault_state_value))
     }
 
     pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<BusE>> {
@@ -506,32 +484,55 @@ pub trait PwmAccess<T> {
     fn get_pwm(&mut self, dot: u16) -> Result<T, Self::Error>;
 }
 
-impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit> {
+impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u8> for Lp586x<DV, I, DataMode8Bit> {
     type Error = I::Error;
 
-    fn set_pwm(&mut self, start: u16, values: &[u16]) -> Result<(), Self::Error> {
-        let mut registers = [0; 396];
-
-        if values.len() + start as usize > (DV::NUM_DOTS as usize) {
+    fn set_pwm(&mut self, start_dot: u16, values: &[u8]) -> Result<(), Self::Error> {
+        if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
+            // TODO: probably we don't want to panic in an embedded system...
             panic!("Too many values supplied for given start and device variant.");
         }
 
-        for (i, value) in values.iter().enumerate() {
-            let [lower, upper] = value.to_le_bytes();
-            registers[start as usize + i] = lower;
-            registers[start as usize + i + 1] = upper;
+        self.interface
+            .write_registers(Register::PWM_BRIGHTNESS_START + start_dot, values)?;
+
+        Ok(())
+    }
+
+    fn get_pwm(&mut self, dot: u16) -> Result<u8, Self::Error> {
+        self.interface
+            .read_register(Register::PWM_BRIGHTNESS_START + dot)
+    }
+}
+
+impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit> {
+    type Error = I::Error;
+
+    fn set_pwm(&mut self, start_dot: u16, values: &[u16]) -> Result<(), Self::Error> {
+        let mut buffer = [0; Variant0::NUM_DOTS as usize * 2];
+
+        if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
+            // TODO: probably we don't want to panic in an embedded system...
+            panic!("Too many values supplied for given start and device variant.");
         }
 
+        // map u16 values to a u8 buffer (little endian)
+        values.iter().enumerate().for_each(|(idx, value)| {
+            let register_offset = idx * 2;
+            [buffer[register_offset], buffer[register_offset + 1]] = value.to_le_bytes();
+        });
+
         self.interface.write_registers(
-            Register::PWM_BRIGHTNESS_START + start * 2,
-            &registers[..values.len() * 2],
+            Register::PWM_BRIGHTNESS_START + start_dot * 2,
+            &buffer[..values.len() * 2],
         )?;
 
         Ok(())
     }
 
-    fn get_pwm(&mut self, _dot: u16) -> Result<u16, Self::Error> {
-        todo!()
+    fn get_pwm(&mut self, dot: u16) -> Result<u16, Self::Error> {
+        self.interface
+            .read_register_wide(Register::PWM_BRIGHTNESS_START + (dot * 2))
     }
 }
 

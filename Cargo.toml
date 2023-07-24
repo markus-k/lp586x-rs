@@ -15,6 +15,7 @@ eh1_0 = ["dep:eh1_0"]
 
 [dependencies]
 embedded-hal = "0.2"
+defmt = "^0.3"
 eh1_0 =  { package = "embedded-hal", version = "1.0.0-alpha.10", optional = true }
 
 [dev-dependencies]

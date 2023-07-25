@@ -70,21 +70,22 @@ impl Configuration {
     }
 
     pub fn dev_config1_reg_value(&self) -> u8 {
-        let dev_config1 = if self.cs_turn_on_delay {
-            BitFlags::DEV_CONFIG1_CS_ON_SHIFT
-        } else {
-            0
-        } | if self.pwm_phase_shift {
-            BitFlags::DEV_CONFIG1_PWM_PHASE_SHIFT
-        } else {
-            0
-        } | match self.pwm_scale_mode {
-            PwmScaleMode::Linear => 0,
-            PwmScaleMode::Exponential => BitFlags::DEV_CONFIG1_PWM_SCALE_MODE,
-        } | match self.switch_blanking_time {
-            LineBlankingTime::Blank1us => 0,
-            LineBlankingTime::Blank0_5us => BitFlags::DEV_CONFIG1_SW_BLK,
-        };
+        let dev_config1 = self
+            .cs_turn_on_delay
+            .then_some(BitFlags::DEV_CONFIG1_CS_ON_SHIFT)
+            .unwrap_or(0)
+            | self
+                .pwm_phase_shift
+                .then_some(BitFlags::DEV_CONFIG1_PWM_PHASE_SHIFT)
+                .unwrap_or(0)
+            | match self.pwm_scale_mode {
+                PwmScaleMode::Linear => 0,
+                PwmScaleMode::Exponential => BitFlags::DEV_CONFIG1_PWM_SCALE_MODE,
+            }
+            | match self.switch_blanking_time {
+                LineBlankingTime::Blank1us => 0,
+                LineBlankingTime::Blank0_5us => BitFlags::DEV_CONFIG1_SW_BLK,
+            };
 
         dev_config1
     }

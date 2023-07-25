@@ -456,6 +456,16 @@ where
         Ok(GlobalFaultState::from_reg_value(fault_state_value))
     }
 
+    /// Clear all led open detection (LOD) indication bits
+    pub fn clear_led_open_fault(&mut self) -> Result<(), Error<BusE>> {
+        self.interface.write_register(Register::LOD_CLEAR, 0xF)
+    }
+
+    /// Clear all led short detection (LSD) indication bits
+    pub fn clear_led_short_fault(&mut self) -> Result<(), Error<BusE>> {
+        self.interface.write_register(Register::LSD_CLEAR, 0xF)
+    }
+
     pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<BusE>> {
         Ok(Lp586x {
             interface: self.interface,

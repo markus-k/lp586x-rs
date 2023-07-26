@@ -378,11 +378,13 @@ where
         Ok(driver)
     }
 
-    pub fn num_lines(&self) -> u8 {
+    /// Number of lines (switches) supported by this driver
+    pub const fn num_lines(&self) -> u8 {
         DV::NUM_LINES
     }
 
-    pub fn num_dots(&self) -> u16 {
+    /// Total number of dots supported by this driver
+    pub const fn num_dots(&self) -> u16 {
         DV::NUM_DOTS
     }
 

@@ -60,23 +60,44 @@ impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> SpiInterface<SPI, C
     }
 }
 
-impl<SPI, CS, BusE> RegisterAccess for SpiInterface<SPI, CS>
+#[derive(Debug)]
+pub enum SpiInterfaceError<SPIE, CSE> {
+    /// An SPI error occured
+    SPI(SPIE),
+
+    /// An error with the CS pin occurred
+    CS(CSE),
+}
+
+impl<SPI, CS, SPIE> RegisterAccess for SpiInterface<SPI, CS>
 where
-    SPI: spi::Transfer<u8, Error = BusE> + spi::Write<u8, Error = BusE>,
-    CS: OutputPin<Error = BusE>,
+    SPI: spi::Transfer<u8, Error = SPIE> + spi::Write<u8, Error = SPIE>,
+    CS: OutputPin,
 {
-    type Error = Error<BusE>;
+    type Error = Error<SpiInterfaceError<SPIE, CS::Error>>;
 
     fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error> {
         let header = spi_transmission_header(start_register, false);
 
-        self.cs.set_low().map_err(Error::Bus)?;
+        self.cs
+            .set_low()
+            .map_err(SpiInterfaceError::CS)
+            .map_err(Error::Interface)?;
 
-        self.spi.write(&header).map_err(Error::Bus)?;
+        self.spi
+            .write(&header)
+            .map_err(SpiInterfaceError::SPI)
+            .map_err(Error::Interface)?;
 
-        self.spi.transfer(data).map_err(Error::Bus)?;
+        self.spi
+            .transfer(data)
+            .map_err(SpiInterfaceError::SPI)
+            .map_err(Error::Interface)?;
 
-        self.cs.set_high().map_err(Error::Bus)?;
+        self.cs
+            .set_high()
+            .map_err(SpiInterfaceError::CS)
+            .map_err(Error::Interface)?;
 
         Ok(())
     }
@@ -84,12 +105,24 @@ where
     fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
         let header = spi_transmission_header(start_register, true);
 
-        self.cs.set_low().map_err(Error::Bus)?;
+        self.cs
+            .set_low()
+            .map_err(SpiInterfaceError::CS)
+            .map_err(Error::Interface)?;
 
-        self.spi.write(&header).map_err(Error::Bus)?;
-        self.spi.write(data).map_err(Error::Bus)?;
+        self.spi
+            .write(&header)
+            .map_err(SpiInterfaceError::SPI)
+            .map_err(Error::Interface)?;
+        self.spi
+            .write(data)
+            .map_err(SpiInterfaceError::SPI)
+            .map_err(Error::Interface)?;
 
-        self.cs.set_high().map_err(Error::Bus)?;
+        self.cs
+            .set_high()
+            .map_err(SpiInterfaceError::CS)
+            .map_err(Error::Interface)?;
 
         Ok(())
     }
@@ -115,11 +148,11 @@ impl<I2C> I2cInterface<I2C> {
 use embedded_hal::blocking::i2c;
 
 #[cfg(not(feature = "eh1_0"))]
-impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
+impl<I2C, IE> RegisterAccess for I2cInterface<I2C>
 where
-    I2C: i2c::Write<Error = BusE> + i2c::WriteRead<Error = BusE>,
+    I2C: i2c::Write<Error = IE> + i2c::WriteRead<Error = IE>,
 {
-    type Error = Error<BusE>;
+    type Error = Error<IE>;
 
     fn read_registers(&mut self, start_register: u16, data: &mut [u8]) -> Result<(), Self::Error> {
         self.i2c
@@ -128,7 +161,7 @@ where
                 &[start_register as u8],
                 data,
             )
-            .map_err(Error::Bus)
+            .map_err(Error::Interface)
     }
 
     fn write_registers(&mut self, start_register: u16, data: &[u8]) -> Result<(), Self::Error> {
@@ -155,7 +188,7 @@ where
 
         self.i2c
             .write(self.address_with_register(start_register), composite_bytes)
-            .map_err(Error::Bus)
+            .map_err(Error::Interface)
     }
 }
 
@@ -178,11 +211,11 @@ mod for_eh1_0 {
         }
     }
 
-    impl<SPID, BusE> RegisterAccess for SpiDeviceInterface<SPID>
+    impl<SPID, IE> RegisterAccess for SpiDeviceInterface<SPID>
     where
-        SPID: spi::SpiDevice<Error = BusE>,
+        SPID: spi::SpiDevice<Error = IE>,
     {
-        type Error = Error<BusE>;
+        type Error = Error<IE>;
 
         fn read_registers(
             &mut self,
@@ -195,7 +228,7 @@ mod for_eh1_0 {
 
             self.spi_device
                 .transaction(&mut operations)
-                .map_err(Error::Bus)?;
+                .map_err(Error::Interface)?;
 
             Ok(())
         }
@@ -207,7 +240,7 @@ mod for_eh1_0 {
 
             self.spi_device
                 .transaction(&mut operations)
-                .map_err(Error::Bus)?;
+                .map_err(Error::Interface)?;
 
             Ok(())
         }
@@ -219,11 +252,11 @@ mod for_eh1_0 {
         }
     }
 
-    impl<I2C, BusE> RegisterAccess for I2cInterface<I2C>
+    impl<I2C, IE> RegisterAccess for I2cInterface<I2C>
     where
-        I2C: i2c::I2c<Error = BusE>,
+        I2C: i2c::I2c<Error = IE>,
     {
-        type Error = Error<BusE>;
+        type Error = Error<IE>;
 
         fn read_registers(
             &mut self,
@@ -235,7 +268,7 @@ mod for_eh1_0 {
 
             self.i2c
                 .transaction(self.address_with_register(start_register), &mut operations)
-                .map_err(Error::Bus)?;
+                .map_err(Error::Interface)?;
 
             Ok(())
         }
@@ -247,7 +280,7 @@ mod for_eh1_0 {
 
             self.i2c
                 .transaction(self.address_with_register(start_register), &mut operations)
-                .map_err(Error::Bus)?;
+                .map_err(Error::Interface)?;
 
             Ok(())
         }

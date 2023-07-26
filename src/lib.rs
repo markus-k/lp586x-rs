@@ -12,14 +12,14 @@ pub mod interface;
 mod register;
 
 use configuration::Configuration;
-use interface::RegisterAccess;
+use interface::{RegisterAccess, SpiInterfaceError};
 use register::{BitFlags, Register};
 
 /// Error enum for the LP586x driver
 #[derive(Debug)]
-pub enum Error<BusE> {
-    /// A bus related error has occured
-    Bus(BusE),
+pub enum Error<IE> {
+    /// An interface related error has occured
+    Interface(IE),
 
     /// Temporary buffer too small
     BufferOverrun,
@@ -307,56 +307,52 @@ pub struct Lp586x<DV, I, DM> {
 }
 
 #[cfg(feature = "eh1_0")]
-impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
+impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
 where
-    D: eh1_0::i2c::I2c<Error = BusE>,
+    D: eh1_0::i2c::I2c<Error = IE>,
 {
     pub fn new_with_i2c(
         i2c: D,
         address: u8,
-    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DataModeUnconfigured>, Error<BusE>> {
+    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DataModeUnconfigured>, Error<IE>> {
         Lp586x::<DV, _, DataModeUnconfigured>::new(interface::I2cInterface::new(i2c, address))
     }
 }
 
 #[cfg(feature = "eh1_0")]
-impl<DV: DeviceVariant, DM: DataModeMarker, BusE, D>
-    Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
+impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
 where
-    D: eh1_0::spi::SpiDevice<Error = BusE>,
+    D: eh1_0::spi::SpiDevice<Error = IE>,
 {
     pub fn new_with_spi_device(
         spi_device: D,
-    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<BusE>>
-    {
+    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<IE>> {
         Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiDeviceInterface::new(spi_device))
     }
 }
 
 #[cfg(not(feature = "eh1_0"))]
-mod for_eh02 {
-    use super::*;
-
-    impl<DV: DeviceVariant, DM: DataModeMarker, BusE, SPI, CS>
-        Lp586x<DV, interface::SpiInterface<SPI, CS>, DM>
-    where
-        SPI: embedded_hal::blocking::spi::Transfer<u8, Error = BusE>
-            + embedded_hal::blocking::spi::Write<u8, Error = BusE>,
-        CS: embedded_hal::digital::v2::OutputPin<Error = BusE>,
-    {
-        pub fn new_with_spi_cs(
-            spi: SPI,
-            cs: CS,
-        ) -> Result<Lp586x<DV, interface::SpiInterface<SPI, CS>, DataModeUnconfigured>, Error<BusE>>
-        {
-            Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiInterface::new(spi, cs))
-        }
+impl<DV: DeviceVariant, DM: DataModeMarker, SPI, CS, SPIE>
+    Lp586x<DV, interface::SpiInterface<SPI, CS>, DM>
+where
+    SPI: embedded_hal::blocking::spi::Transfer<u8, Error = SPIE>
+        + embedded_hal::blocking::spi::Write<u8, Error = SPIE>,
+    CS: embedded_hal::digital::v2::OutputPin,
+{
+    pub fn new_with_spi_cs(
+        spi: SPI,
+        cs: CS,
+    ) -> Result<
+        Lp586x<DV, interface::SpiInterface<SPI, CS>, DataModeUnconfigured>,
+        Error<SpiInterfaceError<SPIE, CS::Error>>,
+    > {
+        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiInterface::new(spi, cs))
     }
 }
 
-impl<DV: DeviceVariant, I, DM, BusE> Lp586x<DV, I, DM>
+impl<DV: DeviceVariant, I, DM, IE> Lp586x<DV, I, DM>
 where
-    I: RegisterAccess<Error = Error<BusE>>,
+    I: RegisterAccess<Error = Error<IE>>,
     DM: DataModeMarker,
 {
     /// Number of current sinks of the LP586x
@@ -371,7 +367,7 @@ where
     /// Create a new LP586x driver instance with the given `interface`.
     ///
     /// The returned driver has the chip enabled
-    pub fn new(interface: I) -> Result<Lp586x<DV, I, DataModeUnconfigured>, Error<BusE>> {
+    pub fn new(interface: I) -> Result<Lp586x<DV, I, DataModeUnconfigured>, Error<IE>> {
         let mut driver = Lp586x {
             interface,
             _data_mode: DataModeUnconfigured,
@@ -393,14 +389,14 @@ where
     /// Enable or disable the chip.
     ///
     /// After enabling the chip, wait t_chip_en (100µs) for the chip to enter normal mode.
-    pub fn chip_enable(&mut self, enable: bool) -> Result<(), Error<BusE>> {
+    pub fn chip_enable(&mut self, enable: bool) -> Result<(), Error<IE>> {
         self.interface.write_register(
             Register::CHIP_EN,
             if enable { BitFlags::CHIP_EN_CHIP_EN } else { 0 },
         )
     }
 
-    pub fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<BusE>> {
+    pub fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<IE>> {
         self.interface.write_registers(
             Register::DEV_INITIAL,
             &[
@@ -415,12 +411,12 @@ where
     }
 
     /// Resets the chip.
-    pub fn reset(&mut self) -> Result<(), Error<BusE>> {
+    pub fn reset(&mut self) -> Result<(), Error<IE>> {
         self.interface.write_register(Register::RESET, 0xff)
     }
 
     /// Sets the global brightness across all LEDs.
-    pub fn set_global_brightness(&mut self, brightness: u8) -> Result<(), Error<BusE>> {
+    pub fn set_global_brightness(&mut self, brightness: u8) -> Result<(), Error<IE>> {
         self.interface
             .write_register(Register::GLOBAL_BRIGHTNESS, brightness)?;
 
@@ -430,11 +426,7 @@ where
     /// Sets the brightness across all LEDs in the given [`Group`].
     /// Note that individual LEDS/dots need to be assigned to a `LED_DOT_GROUP`
     /// for this setting to have effect. By default dots ar not assigned to any group.
-    pub fn set_group_brightness(
-        &mut self,
-        group: Group,
-        brightness: u8,
-    ) -> Result<(), Error<BusE>> {
+    pub fn set_group_brightness(&mut self, group: Group, brightness: u8) -> Result<(), Error<IE>> {
         self.interface
             .write_register(group.brightness_reg_addr(), brightness)?;
 
@@ -442,7 +434,7 @@ where
     }
 
     /// Set group current scaling (0..127).
-    pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<BusE>> {
+    pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<IE>> {
         self.interface
             .write_register(group.current_reg_addr(), current.min(0x7f))?;
 
@@ -451,22 +443,22 @@ where
 
     /// Get global fault state, indicating if any LEDs in the matrix have a
     /// open or short failure.
-    pub fn get_global_fault_state(&mut self) -> Result<GlobalFaultState, Error<BusE>> {
+    pub fn get_global_fault_state(&mut self) -> Result<GlobalFaultState, Error<IE>> {
         let fault_state_value = self.interface.read_register(Register::FAULT_STATE)?;
         Ok(GlobalFaultState::from_reg_value(fault_state_value))
     }
 
     /// Clear all led open detection (LOD) indication bits
-    pub fn clear_led_open_fault(&mut self) -> Result<(), Error<BusE>> {
+    pub fn clear_led_open_fault(&mut self) -> Result<(), Error<IE>> {
         self.interface.write_register(Register::LOD_CLEAR, 0xF)
     }
 
     /// Clear all led short detection (LSD) indication bits
-    pub fn clear_led_short_fault(&mut self) -> Result<(), Error<BusE>> {
+    pub fn clear_led_short_fault(&mut self) -> Result<(), Error<IE>> {
         self.interface.write_register(Register::LSD_CLEAR, 0xF)
     }
 
-    pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<BusE>> {
+    pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<IE>> {
         Ok(Lp586x {
             interface: self.interface,
             _data_mode: DataMode16Bit,
@@ -474,7 +466,7 @@ where
         })
     }
 
-    pub fn into_8bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode8Bit>, Error<BusE>> {
+    pub fn into_8bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode8Bit>, Error<IE>> {
         Ok(Lp586x {
             interface: self.interface,
             _data_mode: DataMode8Bit,
@@ -494,8 +486,11 @@ pub trait PwmAccess<T> {
     fn get_pwm(&mut self, dot: u16) -> Result<T, Self::Error>;
 }
 
-impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u8> for Lp586x<DV, I, DataMode8Bit> {
-    type Error = I::Error;
+impl<DV: DeviceVariant, I, IE> PwmAccess<u8> for Lp586x<DV, I, DataMode8Bit>
+where
+    I: RegisterAccess<Error = Error<IE>>,
+{
+    type Error = Error<IE>;
 
     fn set_pwm(&mut self, start_dot: u16, values: &[u8]) -> Result<(), Self::Error> {
         if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
@@ -515,8 +510,11 @@ impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u8> for Lp586x<DV, I, DataM
     }
 }
 
-impl<DV: DeviceVariant, I: RegisterAccess> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit> {
-    type Error = I::Error;
+impl<DV: DeviceVariant, I, IE> PwmAccess<u16> for Lp586x<DV, I, DataMode16Bit>
+where
+    I: RegisterAccess<Error = Error<IE>>,
+{
+    type Error = Error<IE>;
 
     fn set_pwm(&mut self, start_dot: u16, values: &[u16]) -> Result<(), Self::Error> {
         let mut buffer = [0; Variant0::NUM_DOTS as usize * 2];

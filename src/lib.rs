@@ -373,6 +373,7 @@ where
             _data_mode: DataModeUnconfigured,
             _phantom_data: core::marker::PhantomData::default(),
         };
+        driver.reset()?;
         driver.chip_enable(true)?;
 
         Ok(driver)

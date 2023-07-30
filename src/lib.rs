@@ -174,6 +174,26 @@ impl Group {
     }
 }
 
+/// Configurable group for each dot
+#[derive(Debug, Clone, Copy)]
+pub enum DotGroup {
+    None,
+    Group0,
+    Group1,
+    Group2,
+}
+
+impl DotGroup {
+    fn register_value(&self) -> u8 {
+        match self {
+            DotGroup::None => 0,
+            DotGroup::Group0 => 0b01,
+            DotGroup::Group1 => 0b10,
+            DotGroup::Group2 => 0b11,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GlobalFaultState {
     led_open_detected: bool,
@@ -418,6 +438,37 @@ where
         self.interface.write_register(Register::RESET, 0xff)
     }
 
+    /// Configures dot groups, starting at dot L0-CS0. At least the first dot group has
+    /// to be specified, and at most `self.num_dots()`.
+    pub fn set_dot_groups(&mut self, dot_groups: &[DotGroup]) -> Result<(), Error<IE>> {
+        let mut buffer = [0u8; 54];
+
+        assert!(dot_groups.len() <= self.num_dots() as usize);
+        assert!(!dot_groups.is_empty());
+
+        dot_groups
+            .iter()
+            .enumerate()
+            .map(|(i, dot_group)| {
+                (
+                    i / Self::NUM_CURRENT_SINKS,
+                    i % Self::NUM_CURRENT_SINKS,
+                    dot_group,
+                )
+            })
+            .for_each(|(line, cs, dot_group)| {
+                buffer[line * 5 + cs / 4] |= dot_group.register_value() << (cs % 4 * 2)
+            });
+
+        let last_group = (dot_groups.len() - 1) / Self::NUM_CURRENT_SINKS * 5
+            + (dot_groups.len() - 1) % Self::NUM_CURRENT_SINKS / 4;
+
+        self.interface
+            .write_registers(Register::DOT_GROUP_SELECT_START, &buffer[..=last_group])?;
+
+        Ok(())
+    }
+
     /// Sets the global brightness across all LEDs.
     pub fn set_global_brightness(&mut self, brightness: u8) -> Result<(), Error<IE>> {
         self.interface
@@ -593,10 +644,72 @@ mod tests {
 
     #[test]
     fn test_create_new() {
-        let interface = MockInterface::new(vec![Access::WriteRegister(0x0a9, 0xff)]);
+        let interface = MockInterface::new(vec![
+            Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegister(0x000, 1),
+        ]);
+
+        let ledmatrix = Lp5860::new(interface).unwrap();
+
+        ledmatrix.release().done();
+    }
+
+    #[test]
+    fn test_set_dot_groups() {
+        #[rustfmt::skip]
+        let interface = MockInterface::new(vec![
+            Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegister(0x000, 1),
+            Access::WriteRegisters(
+                0x00c,
+                vec![
+                    // L0
+                    0b01111001, 0b10011110, 0b11100111, 0b01111001, 0b1110,
+                    // L1
+                    0b01111001, 0b00111110,
+                ],
+            ),
+            Access::WriteRegisters(
+                0x00c,
+                vec![0b00]
+            ),
+        ]);
 
         let mut ledmatrix = Lp5860::new(interface).unwrap();
-        ledmatrix.reset().unwrap();
+
+        ledmatrix
+            .set_dot_groups(&[
+                // L0
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                // L1
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group0,
+                DotGroup::Group1,
+                DotGroup::Group2,
+                DotGroup::Group2,
+            ])
+            .unwrap();
+
+        ledmatrix.set_dot_groups(&[DotGroup::None]).unwrap();
 
         ledmatrix.release().done();
     }

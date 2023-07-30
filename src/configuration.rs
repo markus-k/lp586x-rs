@@ -48,10 +48,10 @@ impl Configuration {
             lod_removal: false,
             lsd_removal: false,
 
-            down_deghost: DownDeghost::None,
-            up_deghost: UpDeghost::VledMinus2V,
+            down_deghost: DownDeghost::Weak,
+            up_deghost: UpDeghost::VledMinus2_5V,
             maximum_current: CurrentSetting::Max15mA,
-            up_deghost_enable: false,
+            up_deghost_enable: true,
         }
     }
 

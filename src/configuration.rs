@@ -58,20 +58,19 @@ impl Configuration {
     // TODO: implement builder pattern
 
     pub fn dev_initial_reg_value(&self) -> u8 {
-        let dev_initial = match self.pwm_frequency {
+        // wtf is going on here? when I remove the return [...]; there are loads
+        // of syntax errors
+        return match self.pwm_frequency {
             PwmFrequency::Pwm62_5kHz => 0,
             PwmFrequency::Pwm125kHz => BitFlags::DEV_INITIAL_PWM_FREQ,
         } | self.data_ref_mode.register_value()
             << BitFlags::DEV_INITIAL_DATA_REF_MODE_SHIFT
             | (self.max_line_num & BitFlags::DEV_INITIAL_MAX_LINE_NUM_MASK)
                 << BitFlags::DEV_INITIAL_MAX_LINE_NUM_SHIFT;
-
-        dev_initial
     }
 
     pub fn dev_config1_reg_value(&self) -> u8 {
-        let dev_config1 = self
-            .cs_turn_on_delay
+        self.cs_turn_on_delay
             .then_some(BitFlags::DEV_CONFIG1_CS_ON_SHIFT)
             .unwrap_or(0)
             | self
@@ -85,14 +84,11 @@ impl Configuration {
             | match self.switch_blanking_time {
                 LineBlankingTime::Blank1us => 0,
                 LineBlankingTime::Blank0_5us => BitFlags::DEV_CONFIG1_SW_BLK,
-            };
-
-        dev_config1
+            }
     }
 
     pub fn dev_config2_reg_value(&self) -> u8 {
-        let dev_config2 = self
-            .lsd_removal
+        self.lsd_removal
             .then_some(BitFlags::DEV_CONFIG2_LSD_REMOVAL)
             .unwrap_or(0)
             | self
@@ -101,20 +97,15 @@ impl Configuration {
                 .unwrap_or(0)
             | self.comp_group1.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP1_SHIFT
             | self.comp_group2.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP2_SHIFT
-            | self.comp_group3.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP3_SHIFT;
-
-        dev_config2
+            | self.comp_group3.clamp(0, 3) << BitFlags::DEV_CONFIG2_COMP_GROUP3_SHIFT
     }
 
     pub fn dev_config3_reg_value(&self) -> u8 {
-        let dev_config3 = self
-            .up_deghost_enable
+        self.up_deghost_enable
             .then_some(BitFlags::DEV_CONFIG3_UP_DEGHOST_ENABLE)
             .unwrap_or(0)
             | self.maximum_current.register_value() << BitFlags::DEV_CONFIG3_MAXIMUM_CURRENT_SHIFT
             | self.up_deghost.register_value() << BitFlags::DEV_CONFIG3_UP_DEGHOST_SHIFT
-            | self.down_deghost.register_value() << BitFlags::DEV_CONFIG3_DOWN_DEGHOST_SHIFT;
-
-        dev_config3
+            | self.down_deghost.register_value() << BitFlags::DEV_CONFIG3_DOWN_DEGHOST_SHIFT
     }
 }

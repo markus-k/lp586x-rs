@@ -238,7 +238,7 @@ impl<DV: DeviceVariant> Dot<DV> {
             panic!("Device variant does not support dot {index}");
         }
 
-        Self(index, core::marker::PhantomData::default())
+        Self(index, core::marker::PhantomData)
     }
 
     pub fn index(&self) -> u16 {
@@ -391,7 +391,7 @@ where
         let mut driver = Lp586x {
             interface,
             _data_mode: DataModeUnconfigured,
-            _phantom_data: core::marker::PhantomData::default(),
+            _phantom_data: core::marker::PhantomData,
         };
         driver.reset()?;
         driver.chip_enable(true)?;
@@ -516,7 +516,7 @@ where
         Ok(Lp586x {
             interface: self.interface,
             _data_mode: DataMode16Bit,
-            _phantom_data: core::marker::PhantomData::default(),
+            _phantom_data: core::marker::PhantomData,
         })
     }
 
@@ -524,7 +524,7 @@ where
         Ok(Lp586x {
             interface: self.interface,
             _data_mode: DataMode8Bit,
-            _phantom_data: core::marker::PhantomData::default(),
+            _phantom_data: core::marker::PhantomData,
         })
     }
 }

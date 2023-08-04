@@ -370,6 +370,33 @@ where
     }
 }
 
+macro_rules! fault_per_dot_fn {
+    ($name:ident, $reg:expr, $doc:literal) => {
+        #[doc=$doc]
+        pub fn $name(&mut self, dots: &mut [bool]) -> Result<(), Error<IE>> {
+            let mut buffer = [0u8; 33];
+
+            self.interface.read_registers($reg, &mut buffer)?;
+
+            dots[..DV::NUM_DOTS as usize]
+                .iter_mut()
+                .enumerate()
+                .map(|(i, dot)| {
+                    (
+                        i / DV::NUM_CURRENT_SINKS as usize,
+                        i % DV::NUM_CURRENT_SINKS as usize,
+                        dot,
+                    )
+                })
+                .for_each(|(line, cs, led_is_open)| {
+                    *led_is_open = buffer[line * 3 + cs / 8] & (1 << (cs % 8)) > 0;
+                });
+
+            Ok(())
+        }
+    };
+}
+
 impl<DV: DeviceVariant, I, DM, IE> Lp586x<DV, I, DM>
 where
     I: RegisterAccess<Error = Error<IE>>,
@@ -512,6 +539,18 @@ where
         let fault_state_value = self.interface.read_register(Register::FAULT_STATE)?;
         Ok(GlobalFaultState::from_reg_value(fault_state_value))
     }
+
+    fault_per_dot_fn!(
+        get_led_open_states,
+        Register::DOT_LOD_START,
+        "Get LED open states, starting from the first dot."
+    );
+
+    fault_per_dot_fn!(
+        get_led_short_states,
+        Register::DOT_LSD_START,
+        "Get LED short states, starting from the first dot."
+    );
 
     /// Clear all led open detection (LOD) indication bits
     pub fn clear_led_open_fault(&mut self) -> Result<(), Error<IE>> {

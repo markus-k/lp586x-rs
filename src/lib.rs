@@ -469,6 +469,17 @@ where
         Ok(())
     }
 
+    /// Set dot current, starting from `start_dot`.
+    pub fn set_dot_current(&mut self, start_dot: u16, current: &[u8]) -> Result<(), Error<IE>> {
+        assert!(current.len() <= self.num_dots() as usize);
+        assert!(!current.is_empty());
+
+        self.interface
+            .write_registers(Register::DOT_CURRENT_START + start_dot, current)?;
+
+        Ok(())
+    }
+
     /// Sets the global brightness across all LEDs.
     pub fn set_global_brightness(&mut self, brightness: u8) -> Result<(), Error<IE>> {
         self.interface

@@ -10,14 +10,9 @@ license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[features]
-eh1_0 = ["dep:eh1_0"]
-
 [dependencies]
-embedded-hal = "0.2"
+embedded-hal = "1.0"
 defmt = "^0.3"
-eh1_0 =  { package = "embedded-hal", version = "1.0.0-alpha.10", optional = true }
 
 [dev-dependencies]
-embedded-hal-mock = "0.9"
-eh1_0-mock = { package = "embedded-hal-mock", git = "https://github.com/dbrgn/embedded-hal-mock.git", branch = "1-alpha" }
+embedded-hal-mock = "0.10"

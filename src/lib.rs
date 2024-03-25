@@ -12,7 +12,7 @@ pub mod interface;
 mod register;
 
 use configuration::Configuration;
-use interface::{RegisterAccess, SpiInterfaceError};
+use interface::RegisterAccess;
 use register::{BitFlags, Register};
 
 /// Error enum for the LP586x driver
@@ -194,6 +194,7 @@ impl DotGroup {
     }
 }
 
+/// Holds information about global faults
 #[derive(Debug)]
 pub struct GlobalFaultState {
     led_open_detected: bool,
@@ -305,16 +306,20 @@ impl DeviceVariant for Variant8 {
 }
 impl seal::Sealed for Variant8 {}
 
+/// Marker trait for configured data mode
 pub trait DataModeMarker: seal::Sealed {}
 
+#[doc(hidden)]
 pub struct DataModeUnconfigured;
 impl DataModeMarker for DataModeUnconfigured {}
 impl seal::Sealed for DataModeUnconfigured {}
 
+#[doc(hidden)]
 pub struct DataMode8Bit;
 impl DataModeMarker for DataMode8Bit {}
 impl seal::Sealed for DataMode8Bit {}
 
+#[doc(hidden)]
 pub struct DataMode16Bit;
 impl DataModeMarker for DataMode16Bit {}
 impl seal::Sealed for DataMode16Bit {}
@@ -326,10 +331,9 @@ pub struct Lp586x<DV, I, DM> {
     _phantom_data: core::marker::PhantomData<DV>,
 }
 
-#[cfg(feature = "eh1_0")]
 impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
 where
-    D: eh1_0::i2c::I2c<Error = IE>,
+    D: embedded_hal::i2c::I2c<Error = IE>,
 {
     pub fn new_with_i2c(
         i2c: D,
@@ -339,34 +343,14 @@ where
     }
 }
 
-#[cfg(feature = "eh1_0")]
 impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
 where
-    D: eh1_0::spi::SpiDevice<Error = IE>,
+    D: embedded_hal::spi::SpiDevice<Error = IE>,
 {
     pub fn new_with_spi_device(
         spi_device: D,
     ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<IE>> {
         Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiDeviceInterface::new(spi_device))
-    }
-}
-
-#[cfg(not(feature = "eh1_0"))]
-impl<DV: DeviceVariant, DM: DataModeMarker, SPI, CS, SPIE>
-    Lp586x<DV, interface::SpiInterface<SPI, CS>, DM>
-where
-    SPI: embedded_hal::blocking::spi::Transfer<u8, Error = SPIE>
-        + embedded_hal::blocking::spi::Write<u8, Error = SPIE>,
-    CS: embedded_hal::digital::v2::OutputPin,
-{
-    pub fn new_with_spi_cs(
-        spi: SPI,
-        cs: CS,
-    ) -> Result<
-        Lp586x<DV, interface::SpiInterface<SPI, CS>, DataModeUnconfigured>,
-        Error<SpiInterfaceError<SPIE, CS::Error>>,
-    > {
-        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiInterface::new(spi, cs))
     }
 }
 
@@ -525,8 +509,8 @@ where
         Ok(())
     }
 
-    /// Set group current scaling (0..127).
-    pub fn set_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<IE>> {
+    /// Set color group current scaling (0..127).
+    pub fn set_color_group_current(&mut self, group: Group, current: u8) -> Result<(), Error<IE>> {
         self.interface
             .write_register(group.current_reg_addr(), current.min(0x7f))?;
 
@@ -648,16 +632,16 @@ where
     }
 }
 
-#[cfg(feature = "eh1_0")]
-impl<DV, SPID: eh1_0::spi::SpiDevice, DM> Lp586x<DV, interface::SpiDeviceInterface<SPID>, DM> {
+impl<DV, SPID: embedded_hal::spi::SpiDevice, DM>
+    Lp586x<DV, interface::SpiDeviceInterface<SPID>, DM>
+{
     /// Destroys the driver and releases the owned [`SpiDevice`].
     pub fn release(self) -> SPID {
         self.interface.release()
     }
 }
 
-#[cfg(feature = "eh1_0")]
-impl<DV, I2C: eh1_0::i2c::I2c, DM> Lp586x<DV, interface::I2cInterface<I2C>, DM> {
+impl<DV, I2C: embedded_hal::i2c::I2c, DM> Lp586x<DV, interface::I2cInterface<I2C>, DM> {
     /// Destorys the driver and releases the owned [`I2c`].
     pub fn release(self) -> I2C {
         self.interface.release()

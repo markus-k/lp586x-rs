@@ -25,6 +25,9 @@ pub enum Error<IE> {
     BufferOverrun,
 }
 
+/// Time to wait after enabling the chip (t_chip_en)
+pub const T_CHIP_EN_US: u32 = 100;
+
 /// Output PWM frequency setting
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PwmFrequency {
@@ -394,9 +397,6 @@ where
 
     /// Total number of LEDs supported by this driver
     pub const NUM_DOTS: usize = DV::NUM_DOTS as usize;
-
-    /// Time to wait after enabling the chip (t_chip_en)
-    pub const T_CHIP_EN_US: u32 = 100;
 
     /// Create a new LP586x driver instance with the given `interface`.
     ///

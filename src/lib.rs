@@ -272,6 +272,7 @@ pub trait DeviceVariant: seal::Sealed {
 }
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct Variant0;
 impl DeviceVariant for Variant0 {
     const NUM_LINES: u8 = 11;
@@ -279,6 +280,7 @@ impl DeviceVariant for Variant0 {
 impl seal::Sealed for Variant0 {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct Variant1;
 impl DeviceVariant for Variant1 {
     const NUM_LINES: u8 = 1;
@@ -286,6 +288,7 @@ impl DeviceVariant for Variant1 {
 impl seal::Sealed for Variant1 {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct Variant2;
 impl DeviceVariant for Variant2 {
     const NUM_LINES: u8 = 2;
@@ -293,6 +296,7 @@ impl DeviceVariant for Variant2 {
 impl seal::Sealed for Variant2 {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct Variant4;
 impl DeviceVariant for Variant4 {
     const NUM_LINES: u8 = 4;
@@ -300,6 +304,7 @@ impl DeviceVariant for Variant4 {
 impl seal::Sealed for Variant4 {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct Variant8;
 impl DeviceVariant for Variant8 {
     const NUM_LINES: u8 = 8;
@@ -310,11 +315,13 @@ impl seal::Sealed for Variant8 {}
 pub trait DataModeMarker: seal::Sealed {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct DataMode8Bit;
 impl DataModeMarker for DataMode8Bit {}
 impl seal::Sealed for DataMode8Bit {}
 
 #[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
 pub struct DataMode16Bit;
 impl DataModeMarker for DataMode16Bit {}
 impl seal::Sealed for DataMode16Bit {}

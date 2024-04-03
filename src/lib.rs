@@ -11,7 +11,7 @@ pub mod configuration;
 pub mod interface;
 mod register;
 
-use configuration::Configuration;
+use configuration::{ConfigBuilder, Configuration};
 use interface::RegisterAccess;
 use register::{BitFlags, Register};
 
@@ -26,7 +26,7 @@ pub enum Error<IE> {
 }
 
 /// Output PWM frequency setting
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PwmFrequency {
     /// 125 kHz
     Pwm125kHz,
@@ -35,7 +35,7 @@ pub enum PwmFrequency {
 }
 
 /// Line switch blanking time setting
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineBlankingTime {
     /// 1µs
     Blank1us,
@@ -44,7 +44,7 @@ pub enum LineBlankingTime {
 }
 
 /// Dimming scale setting of final PWM generator
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PwmScaleMode {
     /// Linear scale dimming curve
     Linear,
@@ -53,7 +53,7 @@ pub enum PwmScaleMode {
 }
 
 /// Downside deghosting level selection
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownDeghost {
     None,
     Weak,
@@ -73,7 +73,7 @@ impl DownDeghost {
 }
 
 /// Scan line clamp voltage of upside deghosting
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpDeghost {
     /// VLED - 2V
     VledMinus2V,
@@ -97,7 +97,7 @@ impl UpDeghost {
 }
 
 /// Data refresh mode selection
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataRefMode {
     /// 8 bit PWM, update instantly, no external VSYNC
     Mode1,
@@ -118,7 +118,7 @@ impl DataRefMode {
 }
 
 /// Maximum current cetting
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CurrentSetting {
     Max3mA,
     Max5mA,
@@ -146,7 +146,7 @@ impl CurrentSetting {
 }
 
 /// Fixed color groups for current sinks
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
     /// CS0, CS3, CS6, CS9, CS12, CS15
     Group0,
@@ -175,7 +175,7 @@ impl Group {
 }
 
 /// Configurable group for each dot
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DotGroup {
     None,
     Group0,
@@ -310,11 +310,6 @@ impl seal::Sealed for Variant8 {}
 pub trait DataModeMarker: seal::Sealed {}
 
 #[doc(hidden)]
-pub struct DataModeUnconfigured;
-impl DataModeMarker for DataModeUnconfigured {}
-impl seal::Sealed for DataModeUnconfigured {}
-
-#[doc(hidden)]
 pub struct DataMode8Bit;
 impl DataModeMarker for DataMode8Bit {}
 impl seal::Sealed for DataMode8Bit {}
@@ -327,8 +322,7 @@ impl seal::Sealed for DataMode16Bit {}
 /// Generic driver for all LP586x variants.
 pub struct Lp586x<DV, I, DM> {
     interface: I,
-    _data_mode: DM,
-    _phantom_data: core::marker::PhantomData<DV>,
+    _phantom_data: core::marker::PhantomData<(DV, DM)>,
 }
 
 impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
@@ -336,10 +330,11 @@ where
     D: embedded_hal::i2c::I2c<Error = IE>,
 {
     pub fn new_with_i2c(
+        config: ConfigBuilder<DV, DM>,
         i2c: D,
         address: u8,
-    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DataModeUnconfigured>, Error<IE>> {
-        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::I2cInterface::new(i2c, address))
+    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DM>, Error<IE>> {
+        Lp586x::<DV, _, DM>::new(config, interface::I2cInterface::new(i2c, address))
     }
 }
 
@@ -348,9 +343,10 @@ where
     D: embedded_hal::spi::SpiDevice<Error = IE>,
 {
     pub fn new_with_spi_device(
+        config: ConfigBuilder<DV, DM>,
         spi_device: D,
-    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DataModeUnconfigured>, Error<IE>> {
-        Lp586x::<DV, _, DataModeUnconfigured>::new(interface::SpiDeviceInterface::new(spi_device))
+    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DM>, Error<IE>> {
+        Lp586x::<DV, _, DM>::new(config, interface::SpiDeviceInterface::new(spi_device))
     }
 }
 
@@ -398,13 +394,16 @@ where
     /// Create a new LP586x driver instance with the given `interface`.
     ///
     /// The returned driver has the chip enabled
-    pub fn new(interface: I) -> Result<Lp586x<DV, I, DataModeUnconfigured>, Error<IE>> {
+    pub fn new(
+        config: ConfigBuilder<DV, DM>,
+        interface: I,
+    ) -> Result<Lp586x<DV, I, DM>, Error<IE>> {
         let mut driver = Lp586x {
             interface,
-            _data_mode: DataModeUnconfigured,
             _phantom_data: core::marker::PhantomData,
         };
         driver.reset()?;
+        driver.configure(&config.configuration)?;
         driver.chip_enable(true)?;
 
         Ok(driver)
@@ -430,7 +429,7 @@ where
         )
     }
 
-    pub fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<IE>> {
+    pub(crate) fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<IE>> {
         self.interface.write_registers(
             Register::DEV_INITIAL,
             &[
@@ -545,22 +544,6 @@ where
     pub fn clear_led_short_fault(&mut self) -> Result<(), Error<IE>> {
         self.interface.write_register(Register::LSD_CLEAR, 0xF)
     }
-
-    pub fn into_16bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode16Bit>, Error<IE>> {
-        Ok(Lp586x {
-            interface: self.interface,
-            _data_mode: DataMode16Bit,
-            _phantom_data: core::marker::PhantomData,
-        })
-    }
-
-    pub fn into_8bit_data_mode(self) -> Result<Lp586x<DV, I, DataMode8Bit>, Error<IE>> {
-        Ok(Lp586x {
-            interface: self.interface,
-            _data_mode: DataMode8Bit,
-            _phantom_data: core::marker::PhantomData,
-        })
-    }
 }
 
 /// Trait for accessing PWM data in the correct data format.
@@ -656,21 +639,6 @@ impl<DV, DM> Lp586x<DV, interface::mock::MockInterface, DM> {
     }
 }
 
-/// LP5860 driver with 11 lines
-pub type Lp5860<I> = Lp586x<Variant0, I, DataModeUnconfigured>;
-
-/// LP5861 driver with 1 line
-pub type Lp5861<I> = Lp586x<Variant1, I, DataModeUnconfigured>;
-
-/// LP5862 driver with 2 lines
-pub type Lp5862<I> = Lp586x<Variant2, I, DataModeUnconfigured>;
-
-/// LP5864 driver with 4 lines
-pub type Lp5864<I> = Lp586x<Variant4, I, DataModeUnconfigured>;
-
-/// LP5868 driver with 8 lines
-pub type Lp5868<I> = Lp586x<Variant8, I, DataModeUnconfigured>;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -683,7 +651,8 @@ mod tests {
             Access::WriteRegister(0x000, 1),
         ]);
 
-        let ledmatrix = Lp5860::new(interface).unwrap();
+        let config = ConfigBuilder::new_lp5860();
+        let ledmatrix = Lp586x::new(config, interface).unwrap();
 
         ledmatrix.release().done();
     }
@@ -709,7 +678,8 @@ mod tests {
             ),
         ]);
 
-        let mut ledmatrix = Lp5860::new(interface).unwrap();
+        let config = ConfigBuilder::new_lp5860();
+        let mut ledmatrix = Lp586x::new(config, interface).unwrap();
 
         ledmatrix
             .set_dot_groups(&[

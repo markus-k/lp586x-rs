@@ -112,7 +112,7 @@ impl DataRefMode {
         match self {
             DataRefMode::Mode1 => 0,
             DataRefMode::Mode2 => 1,
-            DataRefMode::Mode3 => 2,
+            DataRefMode::Mode3 => 3,
         }
     }
 }
@@ -648,6 +648,7 @@ mod tests {
     fn test_create_new() {
         let interface = MockInterface::new(vec![
             Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegisters(0x001, vec![0x5E, 0x00, 0x00, 0x57]),
             Access::WriteRegister(0x000, 1),
         ]);
 
@@ -662,6 +663,7 @@ mod tests {
         #[rustfmt::skip]
         let interface = MockInterface::new(vec![
             Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegisters(0x001, vec![0x5E, 0x00, 0x00, 0x57]),
             Access::WriteRegister(0x000, 1),
             Access::WriteRegisters(
                 0x00c,

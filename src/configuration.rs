@@ -109,7 +109,7 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
     fn new<DV: DeviceVariant>() -> ConfigBuilder<DV, DataMode16Bit> {
         ConfigBuilder {
             configuration: Configuration {
-                max_line_num: Variant4::NUM_LINES,
+                max_line_num: DV::NUM_LINES,
                 data_ref_mode: DataRefMode::Mode3,
                 pwm_frequency: PwmFrequency::Pwm62_5kHz,
 

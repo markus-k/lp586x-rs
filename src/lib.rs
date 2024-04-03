@@ -588,6 +588,8 @@ where
     type Error = Error<IE>;
 
     fn set_pwm(&mut self, start_dot: u16, values: &[u16]) -> Result<(), Self::Error> {
+        // very inefficient to "allocate" 304 bytes on the stack, but `DV::NUM_DOTS`
+        // can't be used here (yet)
         let mut buffer = [0; Variant0::NUM_DOTS as usize * 2];
 
         if values.len() + start_dot as usize > (DV::NUM_DOTS as usize) {
@@ -596,10 +598,10 @@ where
         }
 
         // map u16 values to a u8 buffer (little endian)
-        values.iter().enumerate().for_each(|(idx, value)| {
-            let register_offset = idx * 2;
-            [buffer[register_offset], buffer[register_offset + 1]] = value.to_le_bytes();
-        });
+        buffer
+            .chunks_exact_mut(2)
+            .zip(values.iter())
+            .for_each(|(dest, src)| dest.copy_from_slice(&src.to_le_bytes()));
 
         self.interface.write_registers(
             Register::PWM_BRIGHTNESS_START + start_dot * 2,

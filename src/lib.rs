@@ -12,6 +12,7 @@ pub mod interface;
 mod register;
 
 use configuration::{ConfigBuilder, Configuration};
+use embedded_hal::delay::DelayNs;
 use interface::RegisterAccess;
 use register::{BitFlags, Register};
 
@@ -335,28 +336,35 @@ pub struct Lp586x<DV, I, DM> {
     _phantom_data: core::marker::PhantomData<(DV, DM)>,
 }
 
-impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::I2cInterface<D>, DM>
+impl<DV: DeviceVariant, DM: DataModeMarker, IE, I2C> Lp586x<DV, interface::I2cInterface<I2C>, DM>
 where
-    D: embedded_hal::i2c::I2c<Error = IE>,
+    I2C: embedded_hal::i2c::I2c<Error = IE>,
 {
-    pub fn new_with_i2c(
-        config: ConfigBuilder<DV, DM>,
-        i2c: D,
+    pub fn new_with_i2c<D: DelayNs>(
+        config: &ConfigBuilder<DV, DM>,
+        i2c: I2C,
         address: u8,
-    ) -> Result<Lp586x<DV, interface::I2cInterface<D>, DM>, Error<IE>> {
-        Lp586x::<DV, _, DM>::new(config, interface::I2cInterface::new(i2c, address))
+        delay: &mut D,
+    ) -> Result<Lp586x<DV, interface::I2cInterface<I2C>, DM>, Error<IE>> {
+        Lp586x::<DV, _, DM>::new(config, interface::I2cInterface::new(i2c, address), delay)
     }
 }
 
-impl<DV: DeviceVariant, DM: DataModeMarker, IE, D> Lp586x<DV, interface::SpiDeviceInterface<D>, DM>
+impl<DV: DeviceVariant, DM: DataModeMarker, IE, SPI>
+    Lp586x<DV, interface::SpiDeviceInterface<SPI>, DM>
 where
-    D: embedded_hal::spi::SpiDevice<Error = IE>,
+    SPI: embedded_hal::spi::SpiDevice<Error = IE>,
 {
-    pub fn new_with_spi_device(
-        config: ConfigBuilder<DV, DM>,
-        spi_device: D,
-    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<D>, DM>, Error<IE>> {
-        Lp586x::<DV, _, DM>::new(config, interface::SpiDeviceInterface::new(spi_device))
+    pub fn new_with_spi_device<D: DelayNs>(
+        config: &ConfigBuilder<DV, DM>,
+        spi_device: SPI,
+        delay: &mut D,
+    ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<SPI>, DM>, Error<IE>> {
+        Lp586x::<DV, _, DM>::new(
+            config,
+            interface::SpiDeviceInterface::new(spi_device),
+            delay,
+        )
     }
 }
 
@@ -401,16 +409,21 @@ where
     /// Create a new LP586x driver instance with the given `interface`.
     ///
     /// The returned driver has the chip enabled
-    pub fn new(
-        config: ConfigBuilder<DV, DM>,
+    pub fn new<D: DelayNs>(
+        config: &ConfigBuilder<DV, DM>,
         interface: I,
+        delay: &mut D,
     ) -> Result<Lp586x<DV, I, DM>, Error<IE>> {
         let mut driver = Lp586x {
             interface,
             _phantom_data: core::marker::PhantomData,
         };
         driver.reset()?;
+        driver.chip_enable(true)?;
+        delay.delay_us(T_CHIP_EN_US);
         driver.configure(&config.configuration)?;
+        driver.chip_enable(false)?;
+        delay.delay_us(T_CHIP_EN_US);
         driver.chip_enable(true)?;
 
         Ok(driver)
@@ -657,12 +670,15 @@ mod tests {
     fn test_create_new() {
         let interface = MockInterface::new(vec![
             Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegister(0x000, 1),
             Access::WriteRegisters(0x001, vec![0x5E, 0x00, 0x00, 0x57]),
+            Access::WriteRegister(0x000, 0),
             Access::WriteRegister(0x000, 1),
         ]);
+        let mut delay = embedded_hal_mock::eh1::delay::NoopDelay::new();
 
         let config = ConfigBuilder::new_lp5860();
-        let ledmatrix = Lp586x::new(config, interface).unwrap();
+        let ledmatrix = Lp586x::new(&config, interface, &mut delay).unwrap();
 
         ledmatrix.release().done();
     }
@@ -672,7 +688,9 @@ mod tests {
         #[rustfmt::skip]
         let interface = MockInterface::new(vec![
             Access::WriteRegister(0x0a9, 0xff),
+            Access::WriteRegister(0x000, 1),
             Access::WriteRegisters(0x001, vec![0x5E, 0x00, 0x00, 0x57]),
+            Access::WriteRegister(0x000, 0),
             Access::WriteRegister(0x000, 1),
             Access::WriteRegisters(
                 0x00c,
@@ -688,9 +706,10 @@ mod tests {
                 vec![0b00]
             ),
         ]);
+        let mut delay = embedded_hal_mock::eh1::delay::NoopDelay::new();
 
         let config = ConfigBuilder::new_lp5860();
-        let mut ledmatrix = Lp586x::new(config, interface).unwrap();
+        let mut ledmatrix = Lp586x::new(&config, interface, &mut delay).unwrap();
 
         ledmatrix
             .set_dot_groups(&[

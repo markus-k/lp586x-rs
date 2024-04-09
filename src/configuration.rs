@@ -38,8 +38,8 @@ impl Configuration {
         // wtf is going on here? when I remove the return [...]; there are loads
         // of syntax errors
         return match self.pwm_frequency {
-            PwmFrequency::Pwm62_5kHz => 0,
-            PwmFrequency::Pwm125kHz => BitFlags::DEV_INITIAL_PWM_FREQ,
+            PwmFrequency::Pwm125kHz => 0,
+            PwmFrequency::Pwm62_5kHz => BitFlags::DEV_INITIAL_PWM_FREQ,
         } | self.data_ref_mode.register_value()
             << BitFlags::DEV_INITIAL_DATA_REF_MODE_SHIFT
             | (self.max_line_num & BitFlags::DEV_INITIAL_MAX_LINE_NUM_MASK)
@@ -111,7 +111,7 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
             configuration: Configuration {
                 max_line_num: DV::NUM_LINES,
                 data_ref_mode: DataRefMode::Mode3,
-                pwm_frequency: PwmFrequency::Pwm62_5kHz,
+                pwm_frequency: PwmFrequency::Pwm125kHz,
 
                 switch_blanking_time: LineBlankingTime::Blank1us,
                 pwm_scale_mode: PwmScaleMode::Linear,

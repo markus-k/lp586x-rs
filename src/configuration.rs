@@ -170,6 +170,7 @@ impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
         }
     }
 
+    builder_property!(max_line_num, u8);
     builder_property!(pwm_frequency, PwmFrequency);
 
     builder_property!(switch_blanking_time, LineBlankingTime);

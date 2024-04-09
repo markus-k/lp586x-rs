@@ -141,7 +141,8 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
 }
 
 macro_rules! builder_property {
-    ($field:ident, $field_type:ident) => {
+    ($field:ident, $field_type:ident, $doc:literal) => {
+        #[doc = $doc]
         pub fn $field(mut self, $field: $field_type) -> Self {
             self.configuration.$field = $field;
             self
@@ -150,6 +151,10 @@ macro_rules! builder_property {
 }
 
 impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
+    /// Set data mode to use 8 bit PWM
+    ///
+    /// # Arguments
+    /// * `use_vsync`: enable vsync for display refresh
     pub fn data_mode_8bit(mut self, use_vsync: bool) -> ConfigBuilder<DV, DataMode8Bit> {
         self.configuration.data_ref_mode = if use_vsync {
             DataRefMode::Mode2
@@ -162,6 +167,7 @@ impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
         }
     }
 
+    /// Set data mode to 16 bit PWM. Vsync is always enabled in this mode
     pub fn data_mode_16bit(mut self) -> ConfigBuilder<DV, DataMode16Bit> {
         self.configuration.data_ref_mode = DataRefMode::Mode3;
         ConfigBuilder {
@@ -170,24 +176,56 @@ impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
         }
     }
 
-    builder_property!(max_line_num, u8);
-    builder_property!(pwm_frequency, PwmFrequency);
+    builder_property!(
+        max_line_num,
+        u8,
+        "Maximum scan line number selection. Can be greater than supported by the device"
+    );
+    builder_property!(pwm_frequency, PwmFrequency, "Output PWM frequency setting");
 
-    builder_property!(switch_blanking_time, LineBlankingTime);
-    builder_property!(pwm_scale_mode, PwmScaleMode);
-    builder_property!(pwm_phase_shift, bool);
-    builder_property!(cs_turn_on_delay, bool);
+    builder_property!(
+        switch_blanking_time,
+        LineBlankingTime,
+        "Line switch blanking time setting"
+    );
+    builder_property!(
+        pwm_scale_mode,
+        PwmScaleMode,
+        "Dimming scale setting of final PWM generator"
+    );
+    builder_property!(pwm_phase_shift, bool, "PWM phase shift selection");
+    builder_property!(cs_turn_on_delay, bool, "Current sink turn on delay setting");
 
-    builder_property!(comp_group3, u8);
-    builder_property!(comp_group2, u8);
-    builder_property!(comp_group1, u8);
-    builder_property!(lod_removal, bool);
-    builder_property!(lsd_removal, bool);
+    builder_property!(
+        comp_group3,
+        u8,
+        "Low brightness compensation clock shift number setting for group3"
+    );
+    builder_property!(
+        comp_group2,
+        u8,
+        "Low brightness compensation clock shift number setting for group2"
+    );
+    builder_property!(
+        comp_group1,
+        u8,
+        "Low brightness compensation clock shift number setting for group1"
+    );
+    builder_property!(lod_removal, bool, "LSD removal function enable");
+    builder_property!(lsd_removal, bool, "LSD removal function enable");
 
-    builder_property!(down_deghost, DownDeghost);
-    builder_property!(up_deghost, UpDeghost);
-    builder_property!(maximum_current, CurrentSetting);
-    builder_property!(up_deghost_enable, bool);
+    builder_property!(
+        down_deghost,
+        DownDeghost,
+        "Downside deghosting level selection"
+    );
+    builder_property!(
+        up_deghost,
+        UpDeghost,
+        "Scan line clamp voltage of upside deghosting"
+    );
+    builder_property!(maximum_current, CurrentSetting, "Maximum current setting");
+    builder_property!(up_deghost_enable, bool, "Current sink turn on delay enable");
 }
 
 #[cfg(test)]

@@ -7,11 +7,12 @@
 
 #![cfg_attr(not(test), no_std)]
 
-pub mod configuration;
+mod configuration;
 pub mod interface;
 mod register;
 
-use configuration::{ConfigBuilder, Configuration};
+pub use configuration::ConfigBuilder;
+use configuration::Configuration;
 use embedded_hal::delay::DelayNs;
 use interface::RegisterAccess;
 use register::{BitFlags, Register};
@@ -206,7 +207,7 @@ pub struct GlobalFaultState {
 }
 
 impl GlobalFaultState {
-    pub fn from_reg_value(fault_state_value: u8) -> Self {
+    pub(crate) fn from_reg_value(fault_state_value: u8) -> Self {
         GlobalFaultState {
             led_open_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LOD > 0,
             led_short_detected: fault_state_value & BitFlags::FAULT_STATE_GLOBAL_LSD > 0,
@@ -406,9 +407,10 @@ where
     /// Total number of LEDs supported by this driver
     pub const NUM_DOTS: usize = DV::NUM_DOTS as usize;
 
-    /// Create a new LP586x driver instance with the given `interface`.
+    /// Create a new LP586x driver instance with the given `config` and `interface`.
+    /// A `delay` is required to meet the chip-enable timings.
     ///
-    /// The returned driver has the chip enabled
+    /// The returned driver has been configured and enabled.
     pub fn new<D: DelayNs>(
         config: &ConfigBuilder<DV, DM>,
         interface: I,
@@ -640,14 +642,14 @@ where
 impl<DV, SPID: embedded_hal::spi::SpiDevice, DM>
     Lp586x<DV, interface::SpiDeviceInterface<SPID>, DM>
 {
-    /// Destroys the driver and releases the owned [`SpiDevice`].
+    /// Destroys the driver and releases the owned `SpiDevice`.
     pub fn release(self) -> SPID {
         self.interface.release()
     }
 }
 
 impl<DV, I2C: embedded_hal::i2c::I2c, DM> Lp586x<DV, interface::I2cInterface<I2C>, DM> {
-    /// Destorys the driver and releases the owned [`I2c`].
+    /// Destorys the driver and releases the owned `I2c`-interface.
     pub fn release(self) -> I2C {
         self.interface.release()
     }

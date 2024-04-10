@@ -91,6 +91,7 @@ impl Configuration {
 #[doc(hidden)]
 pub struct VariantUnspecified;
 
+/// Builder for creating the device configuration.
 #[derive(Debug, Clone)]
 pub struct ConfigBuilder<DV, DM> {
     pub(crate) configuration: Configuration,
@@ -98,7 +99,8 @@ pub struct ConfigBuilder<DV, DM> {
 }
 
 macro_rules! new_device_config {
-    ($name:ident, $marker:ident) => {
+    ($name:ident, $marker:ident, $doc_name:literal) => {
+        #[doc = concat!("Create a new configuration for the ", $doc_name, " variant.")]
         pub fn $name() -> ConfigBuilder<$marker, DataMode16Bit> {
             Self::new()
         }
@@ -133,11 +135,11 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
         }
     }
 
-    new_device_config!(new_lp5860, Variant0);
-    new_device_config!(new_lp5861, Variant1);
-    new_device_config!(new_lp5862, Variant2);
-    new_device_config!(new_lp5864, Variant4);
-    new_device_config!(new_lp5868, Variant8);
+    new_device_config!(new_lp5860, Variant0, "LP5860");
+    new_device_config!(new_lp5861, Variant1, "LP5861");
+    new_device_config!(new_lp5862, Variant2, "LP5862");
+    new_device_config!(new_lp5864, Variant4, "LP5864");
+    new_device_config!(new_lp5868, Variant8, "LP5868");
 }
 
 macro_rules! builder_property {

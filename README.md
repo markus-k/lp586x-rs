@@ -14,6 +14,8 @@ For examples, have a look at the [examples/](examples/) directory.
 A very simple example:
 
 ```rust
+use lp586x::{ConfigBuilder, Lp586x, PwmAccess};
+
 let config = ConfigBuilder::new_lp5864()
     .pwm_frequency(lp586x::PwmFrequency::Pwm62_5kHz)
     .maximum_current(lp586x::CurrentSetting::Max40mA)

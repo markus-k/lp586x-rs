@@ -1,5 +1,5 @@
 use embedded_hal::{delay::DelayNs, digital::OutputPin};
-use lp586x::{configuration::ConfigBuilder, Lp586x, PwmAccess};
+use lp586x::{ConfigBuilder, Lp586x, PwmAccess};
 
 fn main() {
     // placeholders, replace with instances from your HAL

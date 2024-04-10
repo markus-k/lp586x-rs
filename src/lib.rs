@@ -233,33 +233,6 @@ impl GlobalFaultState {
     }
 }
 
-/// Represents a safe way to address a dot in the matrix.
-pub struct Dot<DV>(u16, core::marker::PhantomData<DV>);
-
-impl<DV: DeviceVariant> Dot<DV> {
-    /// Create [`Dot`] at `index`. Panics if given `index` is outside the device
-    /// variants capabilites.
-    pub fn with_index(index: u16) -> Self {
-        if index / 18 > DV::NUM_LINES as u16 {
-            panic!("Device variant does not support dot {index}");
-        }
-
-        Self(index, core::marker::PhantomData)
-    }
-
-    pub fn index(&self) -> u16 {
-        self.0
-    }
-
-    pub fn line(&self) -> u16 {
-        self.0 / 18
-    }
-
-    pub fn current_sink(&self) -> u16 {
-        self.0 % 18
-    }
-}
-
 mod seal {
     pub trait Sealed {}
 }

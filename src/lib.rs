@@ -367,7 +367,7 @@ where
         config: &ConfigBuilderDeviceSpecific<DV, DM>,
         i2c: I2C,
         address: u8,
-        delay: &mut D,
+        delay: impl DelayNs,
     ) -> Result<Lp586x<DV, interface::I2cInterface<I2C>, DM>, Error<IE>> {
         Lp586x::<DV, _, DM>::new(config, interface::I2cInterface::new(i2c, address), delay)
     }
@@ -381,7 +381,7 @@ where
     pub fn new_with_spi_device(
         config: &ConfigBuilderDeviceSpecific<DV, DM>,
         spi_device: SPI,
-        delay: &mut D,
+        delay: impl DelayNs,
     ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<SPI>, DM>, Error<IE>> {
         Lp586x::<DV, _, DM>::new(
             config,
@@ -436,7 +436,7 @@ where
     pub fn new(
         config: &ConfigBuilderDeviceSpecific<DV, DM>,
         interface: I,
-        delay: &mut D,
+        mut delay: impl DelayNs,
     ) -> Result<Lp586x<DV, I, DM>, Error<IE>> {
         let mut driver = Lp586x {
             interface,

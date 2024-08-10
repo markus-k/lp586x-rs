@@ -4,9 +4,19 @@
 [![docs.rs page](https://docs.rs/lp586x/badge.svg)](https://docs.rs/lp586x)
 ![no_std](https://img.shields.io/badge/no__std-yes-blue)
 
-LP586x matrix LED driver written in Rust (supports Texas Instruments
-[LP5860](https://www.ti.com/product/LP5860), LP5861, LP5862, LP5864, 
-LP5868).
+LP586x matrix LED driver written in Rust.
+
+Supported devices:
+* [LP5860](https://www.ti.com/product/LP5860)
+* [LP5861](https://www.ti.com/product/LP5861)
+* [LP5862](https://www.ti.com/product/LP5862)
+* [LP5864](https://www.ti.com/product/LP5864)
+* [LP5866](https://www.ti.com/product/LP5866)
+* [LP5868](https://www.ti.com/product/LP5868)
+* [LP5860T](https://www.ti.com/product/LP5860T)
+* [LP5861T](https://www.ti.com/product/LP5861T)
+* [LP5866T](https://www.ti.com/product/LP5866T)
+* [LP5868T](https://www.ti.com/product/LP5868T)
 
 This driver is still work-in-progress and it's API may not be stable. Pull requests welcome!
 

@@ -9,7 +9,7 @@ fn main() {
 
     let config = ConfigBuilder::new_lp5864()
         .pwm_frequency(lp586x::PwmFrequency::Pwm62_5kHz)
-        .maximum_current(lp586x::CurrentSetting::Max40mA)
+        .maximum_current(lp586x::CurrentSettingNonT::Max40mA)
         .data_mode_16bit();
     let mut led_driver = Lp586x::new_with_i2c(&config, i2c_bus, 0x00, &mut delay).unwrap();
     let mut framebuffer = [0u16; 72];

@@ -1,13 +1,14 @@
 use core::marker::PhantomData;
 
 use crate::{
-    register::BitFlags, CurrentSetting, DataMode16Bit, DataMode8Bit, DataModeMarker, DataRefMode,
-    DeviceVariant, DownDeghost, LineBlankingTime, PwmFrequency, PwmScaleMode, UpDeghost, Variant0,
-    Variant1, Variant2, Variant4, Variant8,
+    register::BitFlags, DataMode16Bit, DataMode8Bit, DataModeMarker, DataRefMode, DeviceVariant,
+    DownDeghost, LineBlankingTime, PwmFrequency, PwmScaleMode, ToRegisterValue, UpDeghost,
+    Variant0, Variant0T, Variant1, Variant1T, Variant2, Variant4, Variant6, Variant6T, Variant8,
+    Variant8T,
 };
 
 #[derive(Debug, Clone)]
-pub(crate) struct Configuration {
+pub(crate) struct Configuration<DV: DeviceVariant> {
     // dev_initial
     pub(crate) max_line_num: u8,
     pub(crate) data_ref_mode: DataRefMode,
@@ -29,11 +30,14 @@ pub(crate) struct Configuration {
     // dev_config3
     pub(crate) down_deghost: DownDeghost,
     pub(crate) up_deghost: UpDeghost,
-    pub(crate) maximum_current: CurrentSetting,
+    pub(crate) maximum_current: DV::CurrentSetting,
     pub(crate) up_deghost_enable: bool,
 }
 
-impl Configuration {
+impl<DV> Configuration<DV>
+where
+    DV: DeviceVariant,
+{
     pub fn dev_initial_reg_value(&self) -> u8 {
         // wtf is going on here? when I remove the return [...]; there are loads
         // of syntax errors
@@ -87,29 +91,20 @@ impl Configuration {
     }
 }
 
-/// Just a helper marker to create a new [`ConfigBuilder`]
-#[doc(hidden)]
-pub struct VariantUnspecified;
-
-/// Builder for creating the device configuration.
-#[derive(Debug, Clone)]
-pub struct ConfigBuilder<DV, DM> {
-    pub(crate) configuration: Configuration,
-    _marker: PhantomData<(DV, DM)>,
-}
+pub struct ConfigBuilder {}
 
 macro_rules! new_device_config {
-    ($name:ident, $marker:ident, $doc_name:literal) => {
+    ($name:ident, $marker:path, $doc_name:literal) => {
         #[doc = concat!("Create a new configuration for the ", $doc_name, " variant.")]
-        pub fn $name() -> ConfigBuilder<$marker, DataMode16Bit> {
+        pub fn $name() -> ConfigBuilderDeviceSpecific<$marker, DataMode16Bit> {
             Self::new()
         }
     };
 }
 
-impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
-    fn new<DV: DeviceVariant>() -> ConfigBuilder<DV, DataMode16Bit> {
-        ConfigBuilder {
+impl ConfigBuilder {
+    fn new<DV: DeviceVariant>() -> ConfigBuilderDeviceSpecific<DV, DataMode16Bit> {
+        ConfigBuilderDeviceSpecific {
             configuration: Configuration {
                 max_line_num: DV::NUM_LINES,
                 data_ref_mode: DataRefMode::Mode3,
@@ -128,7 +123,7 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
 
                 down_deghost: DownDeghost::Weak,
                 up_deghost: UpDeghost::VledMinus2_5V,
-                maximum_current: CurrentSetting::Max15mA,
+                maximum_current: DV::CurrentSetting::default(),
                 up_deghost_enable: true,
             },
             _marker: Default::default(),
@@ -139,11 +134,24 @@ impl ConfigBuilder<VariantUnspecified, DataMode16Bit> {
     new_device_config!(new_lp5861, Variant1, "LP5861");
     new_device_config!(new_lp5862, Variant2, "LP5862");
     new_device_config!(new_lp5864, Variant4, "LP5864");
+    new_device_config!(new_lp5866, Variant6, "LP5866");
     new_device_config!(new_lp5868, Variant8, "LP5868");
+
+    new_device_config!(new_lp5860t, Variant0T, "LP5860T");
+    new_device_config!(new_lp5861t, Variant1T, "LP5861T");
+    new_device_config!(new_lp5866t, Variant6T, "LP5866T");
+    new_device_config!(new_lp5868t, Variant8T, "LP5868T");
+}
+
+/// Builder for creating the device configuration.
+#[derive(Debug, Clone)]
+pub struct ConfigBuilderDeviceSpecific<DV: DeviceVariant, DM> {
+    pub(crate) configuration: Configuration<DV>,
+    _marker: PhantomData<DM>,
 }
 
 macro_rules! builder_property {
-    ($field:ident, $field_type:ident, $doc:literal) => {
+    ($field:ident, $field_type:path, $doc:literal) => {
         #[doc = $doc]
         pub fn $field(mut self, $field: $field_type) -> Self {
             self.configuration.$field = $field;
@@ -152,27 +160,30 @@ macro_rules! builder_property {
     };
 }
 
-impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
+impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilderDeviceSpecific<DV, DM> {
     /// Set data mode to use 8 bit PWM
     ///
     /// # Arguments
     /// * `use_vsync`: enable vsync for display refresh
-    pub fn data_mode_8bit(mut self, use_vsync: bool) -> ConfigBuilder<DV, DataMode8Bit> {
+    pub fn data_mode_8bit(
+        mut self,
+        use_vsync: bool,
+    ) -> ConfigBuilderDeviceSpecific<DV, DataMode8Bit> {
         self.configuration.data_ref_mode = if use_vsync {
             DataRefMode::Mode2
         } else {
             DataRefMode::Mode1
         };
-        ConfigBuilder {
+        ConfigBuilderDeviceSpecific {
             configuration: self.configuration,
             _marker: Default::default(),
         }
     }
 
     /// Set data mode to 16 bit PWM. Vsync is always enabled in this mode
-    pub fn data_mode_16bit(mut self) -> ConfigBuilder<DV, DataMode16Bit> {
+    pub fn data_mode_16bit(mut self) -> ConfigBuilderDeviceSpecific<DV, DataMode16Bit> {
         self.configuration.data_ref_mode = DataRefMode::Mode3;
-        ConfigBuilder {
+        ConfigBuilderDeviceSpecific {
             configuration: self.configuration,
             _marker: Default::default(),
         }
@@ -213,7 +224,7 @@ impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
         u8,
         "Low brightness compensation clock shift number setting for group1"
     );
-    builder_property!(lod_removal, bool, "LSD removal function enable");
+    builder_property!(lod_removal, bool, "LOD removal function enable");
     builder_property!(lsd_removal, bool, "LSD removal function enable");
 
     builder_property!(
@@ -226,7 +237,11 @@ impl<DV: DeviceVariant, DM: DataModeMarker> ConfigBuilder<DV, DM> {
         UpDeghost,
         "Scan line clamp voltage of upside deghosting"
     );
-    builder_property!(maximum_current, CurrentSetting, "Maximum current setting");
+    builder_property!(
+        maximum_current,
+        DV::CurrentSetting,
+        "Maximum current setting"
+    );
     builder_property!(up_deghost_enable, bool, "Current sink turn on delay enable");
 }
 

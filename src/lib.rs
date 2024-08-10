@@ -12,7 +12,7 @@ pub mod interface;
 mod register;
 
 pub use configuration::ConfigBuilder;
-use configuration::Configuration;
+use configuration::{ConfigBuilderDeviceSpecific, Configuration};
 use embedded_hal::delay::DelayNs;
 use interface::RegisterAccess;
 use register::{BitFlags, Register};
@@ -29,6 +29,10 @@ pub enum Error<IE> {
 
 /// Time to wait after enabling the chip (t_chip_en)
 pub const T_CHIP_EN_US: u32 = 100;
+
+pub trait ToRegisterValue<T> {
+    fn register_value(&self) -> T;
+}
 
 /// Output PWM frequency setting
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,8 +70,8 @@ pub enum DownDeghost {
     Strong,
 }
 
-impl DownDeghost {
-    pub const fn register_value(&self) -> u8 {
+impl ToRegisterValue<u8> for DownDeghost {
+    fn register_value(&self) -> u8 {
         match self {
             DownDeghost::None => 0,
             DownDeghost::Weak => 1,
@@ -90,8 +94,8 @@ pub enum UpDeghost {
     Gnd,
 }
 
-impl UpDeghost {
-    pub const fn register_value(&self) -> u8 {
+impl ToRegisterValue<u8> for UpDeghost {
+    fn register_value(&self) -> u8 {
         match self {
             UpDeghost::VledMinus2V => 0,
             UpDeghost::VledMinus2_5V => 1,
@@ -112,8 +116,8 @@ pub enum DataRefMode {
     Mode3,
 }
 
-impl DataRefMode {
-    pub const fn register_value(&self) -> u8 {
+impl ToRegisterValue<u8> for DataRefMode {
+    fn register_value(&self) -> u8 {
         match self {
             DataRefMode::Mode1 => 0,
             DataRefMode::Mode2 => 1,
@@ -122,12 +126,13 @@ impl DataRefMode {
     }
 }
 
-/// Maximum current cetting
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CurrentSetting {
+/// Maximum current setting
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CurrentSettingNonT {
     Max3mA,
     Max5mA,
     Max10mA,
+    #[default]
     Max15mA,
     Max20mA,
     Max30mA,
@@ -135,17 +140,73 @@ pub enum CurrentSetting {
     Max50mA,
 }
 
-impl CurrentSetting {
-    pub const fn register_value(&self) -> u8 {
+impl ToRegisterValue<u8> for CurrentSettingNonT {
+    fn register_value(&self) -> u8 {
         match self {
-            CurrentSetting::Max3mA => 0,
-            CurrentSetting::Max5mA => 1,
-            CurrentSetting::Max10mA => 2,
-            CurrentSetting::Max15mA => 3,
-            CurrentSetting::Max20mA => 4,
-            CurrentSetting::Max30mA => 5,
-            CurrentSetting::Max40mA => 6,
-            CurrentSetting::Max50mA => 7,
+            CurrentSettingNonT::Max3mA => 0,
+            CurrentSettingNonT::Max5mA => 1,
+            CurrentSettingNonT::Max10mA => 2,
+            CurrentSettingNonT::Max15mA => 3,
+            CurrentSettingNonT::Max20mA => 4,
+            CurrentSettingNonT::Max30mA => 5,
+            CurrentSettingNonT::Max40mA => 6,
+            CurrentSettingNonT::Max50mA => 7,
+        }
+    }
+}
+
+/// Maximum current setting for T-devices
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CurrentSettingT {
+    Max7_5mA,
+    Max12_5mA,
+    Max25mA,
+    #[default]
+    Max37_5mA,
+    Max50mA,
+    Max75mA,
+    Max100mA,
+}
+
+impl ToRegisterValue<u8> for CurrentSettingT {
+    fn register_value(&self) -> u8 {
+        match self {
+            CurrentSettingT::Max7_5mA => 0,
+            CurrentSettingT::Max12_5mA => 1,
+            CurrentSettingT::Max25mA => 2,
+            CurrentSettingT::Max37_5mA => 3,
+            CurrentSettingT::Max50mA => 4,
+            CurrentSettingT::Max75mA => 5,
+            CurrentSettingT::Max100mA => 6,
+        }
+    }
+}
+
+/// Maximum current setting for LP5861T
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CurrentSettingLP5861T {
+    Max7_5mA,
+    Max12_5mA,
+    Max25mA,
+    #[default]
+    Max37_5mA,
+    Max50mA,
+    Max75mA,
+    Max100mA,
+    Max125mA,
+}
+
+impl ToRegisterValue<u8> for CurrentSettingLP5861T {
+    fn register_value(&self) -> u8 {
+        match self {
+            CurrentSettingLP5861T::Max7_5mA => 0,
+            CurrentSettingLP5861T::Max12_5mA => 1,
+            CurrentSettingLP5861T::Max25mA => 2,
+            CurrentSettingLP5861T::Max37_5mA => 3,
+            CurrentSettingLP5861T::Max50mA => 4,
+            CurrentSettingLP5861T::Max75mA => 5,
+            CurrentSettingLP5861T::Max100mA => 6,
+            CurrentSettingLP5861T::Max125mA => 7,
         }
     }
 }
@@ -188,7 +249,7 @@ pub enum DotGroup {
     Group2,
 }
 
-impl DotGroup {
+impl ToRegisterValue<u8> for DotGroup {
     fn register_value(&self) -> u8 {
         match self {
             DotGroup::None => 0,
@@ -247,47 +308,35 @@ pub trait DeviceVariant: seal::Sealed {
 
     /// Total number of LED dots of this device variant.
     const NUM_DOTS: u16 = Self::NUM_LINES as u16 * Self::NUM_CURRENT_SINKS as u16;
+
+    /// Current setting type associated with this device variant.
+    type CurrentSetting: ToRegisterValue<u8> + Clone + core::fmt::Debug + Default;
 }
 
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct Variant0;
-impl DeviceVariant for Variant0 {
-    const NUM_LINES: u8 = 11;
+macro_rules! device_variant {
+    ($name:ident, $num_lines:literal, $current_setting_type:path) => {
+        #[doc(hidden)]
+        #[derive(Debug, Clone, Copy)]
+        pub struct $name;
+        impl DeviceVariant for $name {
+            const NUM_LINES: u8 = $num_lines;
+            type CurrentSetting = $current_setting_type;
+        }
+        impl seal::Sealed for $name {}
+    };
 }
-impl seal::Sealed for Variant0 {}
 
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct Variant1;
-impl DeviceVariant for Variant1 {
-    const NUM_LINES: u8 = 1;
-}
-impl seal::Sealed for Variant1 {}
+device_variant!(Variant0, 11, CurrentSettingNonT);
+device_variant!(Variant1, 1, CurrentSettingNonT);
+device_variant!(Variant2, 2, CurrentSettingNonT);
+device_variant!(Variant4, 4, CurrentSettingNonT);
+device_variant!(Variant6, 6, CurrentSettingNonT);
+device_variant!(Variant8, 8, CurrentSettingNonT);
 
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct Variant2;
-impl DeviceVariant for Variant2 {
-    const NUM_LINES: u8 = 2;
-}
-impl seal::Sealed for Variant2 {}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct Variant4;
-impl DeviceVariant for Variant4 {
-    const NUM_LINES: u8 = 4;
-}
-impl seal::Sealed for Variant4 {}
-
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy)]
-pub struct Variant8;
-impl DeviceVariant for Variant8 {
-    const NUM_LINES: u8 = 8;
-}
-impl seal::Sealed for Variant8 {}
+device_variant!(Variant0T, 11, CurrentSettingT);
+device_variant!(Variant1T, 1, CurrentSettingLP5861T);
+device_variant!(Variant6T, 6, CurrentSettingT);
+device_variant!(Variant8T, 8, CurrentSettingT);
 
 /// Marker trait for configured data mode
 pub trait DataModeMarker: seal::Sealed {}
@@ -314,8 +363,8 @@ impl<DV: DeviceVariant, DM: DataModeMarker, IE, I2C> Lp586x<DV, interface::I2cIn
 where
     I2C: embedded_hal::i2c::I2c<Error = IE>,
 {
-    pub fn new_with_i2c<D: DelayNs>(
-        config: &ConfigBuilder<DV, DM>,
+    pub fn new_with_i2c(
+        config: &ConfigBuilderDeviceSpecific<DV, DM>,
         i2c: I2C,
         address: u8,
         delay: &mut D,
@@ -329,8 +378,8 @@ impl<DV: DeviceVariant, DM: DataModeMarker, IE, SPI>
 where
     SPI: embedded_hal::spi::SpiDevice<Error = IE>,
 {
-    pub fn new_with_spi_device<D: DelayNs>(
-        config: &ConfigBuilder<DV, DM>,
+    pub fn new_with_spi_device(
+        config: &ConfigBuilderDeviceSpecific<DV, DM>,
         spi_device: SPI,
         delay: &mut D,
     ) -> Result<Lp586x<DV, interface::SpiDeviceInterface<SPI>, DM>, Error<IE>> {
@@ -384,8 +433,8 @@ where
     /// A `delay` is required to meet the chip-enable timings.
     ///
     /// The returned driver has been configured and enabled.
-    pub fn new<D: DelayNs>(
-        config: &ConfigBuilder<DV, DM>,
+    pub fn new(
+        config: &ConfigBuilderDeviceSpecific<DV, DM>,
         interface: I,
         delay: &mut D,
     ) -> Result<Lp586x<DV, I, DM>, Error<IE>> {
@@ -424,7 +473,7 @@ where
         )
     }
 
-    pub(crate) fn configure(&mut self, configuration: &Configuration) -> Result<(), Error<IE>> {
+    pub(crate) fn configure(&mut self, configuration: &Configuration<DV>) -> Result<(), Error<IE>> {
         self.interface.write_registers(
             Register::DEV_INITIAL,
             &[

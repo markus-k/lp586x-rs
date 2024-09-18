@@ -1,6 +1,6 @@
 [package]
 name = "lp586x"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 description = "LP586x matrix LED driver (supports LP5860, LP5861, LP5862, LP5864, LP5868)"

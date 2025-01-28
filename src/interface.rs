@@ -143,6 +143,116 @@ where
     }
 }
 
+#[cfg(feature = "nb")]
+pub mod nb {
+    use super::{spi_transmission_header, Error};
+    use embedded_hal_async::spi;
+
+    /// Trait for giving read and write access to registers
+    #[allow(async_fn_in_trait)]
+    pub trait RegisterAccess {
+        type Error;
+
+        /// Reads `N` values from multiple registers, starting from `start_register` and incrementing
+        /// the register for every elements.
+        async fn read_registers(
+            &mut self,
+            start_register: u16,
+            data: &mut [u8],
+        ) -> Result<(), Self::Error>;
+
+        /// Writes to multiple registers, starting from `start_register` and incrementing
+        /// the register by one for every element in `data`.
+        async fn write_registers(
+            &mut self,
+            start_register: u16,
+            data: &[u8],
+        ) -> Result<(), Self::Error>;
+
+        /// Reads a single value from `register`.
+        async fn read_register(&mut self, register: u16) -> Result<u8, Self::Error> {
+            let mut buffer: [u8; 1] = [0; 1];
+            self.read_registers(register, &mut buffer).await?;
+
+            Ok(buffer[0])
+        }
+
+        async fn read_register_wide(&mut self, register: u16) -> Result<u16, Self::Error> {
+            let mut bytes = [0; 2];
+            self.read_registers(register, &mut bytes).await?;
+            Ok(u16::from_le_bytes(bytes))
+        }
+
+        /// Writes a single value to `register`.
+        async fn write_register(&mut self, register: u16, value: u8) -> Result<(), Self::Error> {
+            self.write_registers(register, &[value]).await
+        }
+
+        async fn write_register_wide(
+            &mut self,
+            register: u16,
+            value: u16,
+        ) -> Result<(), Self::Error> {
+            self.write_registers(register, &value.to_le_bytes()).await
+        }
+    }
+
+    pub struct SpiDeviceInterface<SPID> {
+        pub(crate) spi_device: SPID,
+    }
+
+    impl<SPID: spi::SpiDevice> SpiDeviceInterface<SPID> {
+        pub fn new(spi_device: SPID) -> Self {
+            Self { spi_device }
+        }
+
+        pub fn release(self) -> SPID {
+            self.spi_device
+        }
+    }
+
+    impl<SPID, IE> RegisterAccess for SpiDeviceInterface<SPID>
+    where
+        SPID: spi::SpiDevice<Error = IE>,
+    {
+        type Error = Error<IE>;
+
+        async fn read_registers(
+            &mut self,
+            start_register: u16,
+            data: &mut [u8],
+        ) -> Result<(), Self::Error> {
+            let header = spi_transmission_header(start_register, false);
+
+            let mut operations = [spi::Operation::Write(&header), spi::Operation::Read(data)];
+
+            self.spi_device
+                .transaction(&mut operations)
+                .await
+                .map_err(Error::Interface)?;
+
+            Ok(())
+        }
+
+        async fn write_registers(
+            &mut self,
+            start_register: u16,
+            data: &[u8],
+        ) -> Result<(), Self::Error> {
+            let header = spi_transmission_header(start_register, true);
+
+            let mut operations = [spi::Operation::Write(&header), spi::Operation::Write(data)];
+
+            self.spi_device
+                .transaction(&mut operations)
+                .await
+                .map_err(Error::Interface)?;
+
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

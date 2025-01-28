@@ -17,6 +17,9 @@ use embedded_hal::delay::DelayNs;
 use interface::RegisterAccess;
 use register::{BitFlags, Register};
 
+#[cfg(feature = "nb")]
+pub mod nb;
+
 /// Error enum for the LP586x driver
 #[derive(Debug)]
 pub enum Error<IE> {

@@ -34,7 +34,7 @@ let config = ConfigBuilder::new_lp5864()
     .maximum_current(lp586x::CurrentSettingNonT::Max40mA)
     .data_mode_8bit(false); // disable vsync for simplicity
 
-let mut led_driver = Lp586x::new_with_i2c(&config, i2c_bus, 0x00, &mut delay).unwrap();
+let mut led_driver = Lp586x::new_with_i2c(&config, i2c_bus, 0x40, &mut delay).unwrap();
 let mut framebuffer = [0u8; 72];
 framebuffer[0] = u8::MAX;
 

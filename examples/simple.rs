@@ -5,13 +5,13 @@ fn main() {
     // placeholders, replace with instances from your HAL
     let i2c_bus = embedded_hal_mock::eh1::i2c::Mock::new(&[]);
     let mut delay = embedded_hal_mock::eh1::delay::NoopDelay::new();
-    let mut vsync_pin = embedded_hal_mock::eh1::pin::Mock::new(&[]);
+    let mut vsync_pin = embedded_hal_mock::eh1::digital::Mock::new(&[]);
 
     let config = ConfigBuilder::new_lp5864()
         .pwm_frequency(lp586x::PwmFrequency::Pwm62_5kHz)
         .maximum_current(lp586x::CurrentSettingNonT::Max40mA)
         .data_mode_16bit();
-    let mut led_driver = Lp586x::new_with_i2c(&config, i2c_bus, 0x00, &mut delay).unwrap();
+    let mut led_driver = Lp586x::new_with_i2c(&config, i2c_bus, 0x40, &mut delay).unwrap();
     let mut framebuffer = [0u16; 72];
     framebuffer[0] = u16::MAX;
 
